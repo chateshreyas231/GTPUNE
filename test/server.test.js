@@ -66,6 +66,8 @@ describe("GTPUNE server", () => {
     assert.match(game.headers.get("content-type") ?? "", /javascript/);
     const three = await fetch(`${base}/vendor/three/three.module.js`);
     assert.equal(three.status, 200);
+    const street = await fetch(`${base}/street.js`);
+    assert.equal(street.status, 200);
     const wasm = await fetch(`${base}/vendor/rapier/rapier_wasm3d_bg.wasm`);
     assert.equal(wasm.status, 200);
     assert.match(wasm.headers.get("content-type") ?? "", /wasm/);

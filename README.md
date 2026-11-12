@@ -1,6 +1,6 @@
 # GTPUNE
 
-A third-person chapter on FC Road in Pune. You are new on the road, with one bag. Kothrud and Karve Nagar are listed and locked. The city is simple geometry: the college strip, a chai stall, a bookshop, a signal, and a few blocks.
+A third-person chapter on FC Road in Pune. You are new on the road, with one bag. Kothrud and Karve Nagar are listed and locked. FC Road is a textured stretch: lanes, a junction, the college strip, a chai stall, and a bookshop. The drawings are made in the page, not imported.
 
 Two deliveries start at the chai stall. An old scooter and an auto are parked on the road. The libraries are Three.js and Rapier, loaded in the browser with no build step.
 
@@ -24,7 +24,8 @@ npm test
 
 ## Layout
 
-- `src/game.js` — the city, player, vehicles, camera, and weather
+- `src/game.js` — the player, vehicles, camera, and weather
+- `src/street.js` — the road, facades, and street props
 - `src/missions.js` — the two deliveries
 - `src/save.js` — the browser save
 - `public/index.html` — the page
