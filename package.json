@@ -1,0 +1,14 @@
+{
+  "name": "city-rider",
+  "version": "0.1.0",
+  "private": true,
+  "description": "City Rider — neighbourhood rides in Pune (Kothrud, Karve Nagar, and FC Road).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  }
+}
