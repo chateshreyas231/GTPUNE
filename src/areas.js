@@ -1,6 +1,6 @@
-/** City Rider serves these Pune neighbourhoods only. */
+/** GTPUNE serves these Pune neighbourhoods only. */
 export const serviceArea = {
-  product: "City Rider",
+  product: "GTPUNE",
   city: "Pune",
   neighbourhoods: [
     { id: "kothrud", name: "Kothrud" },
