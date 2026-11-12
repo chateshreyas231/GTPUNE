@@ -2,7 +2,7 @@
   "name": "gtpune",
   "version": "0.1.0",
   "private": true,
-  "description": "GTPUNE — a browser chapter on FC Road in Pune. Kothrud and Karve Nagar stay locked.",
+  "description": "GTPUNE — a third-person FC Road chapter in the browser. Kothrud and Karve Nagar stay locked.",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -10,5 +10,9 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.14.0",
+    "three": "^0.170.0"
   }
 }

@@ -1,163 +1,100 @@
 const MISSIONS = [
   {
     id: "cutting-run",
-    kind: "delivery",
     title: "Cutting run",
+    pay: 40,
+    accept: "The stall puts a steel dabba in your bag. The college strip is along the road.",
+    complete: "The college strip takes the dabba. Forty rupees.",
     giver: "chai-stall",
     dropoff: "college-strip",
-    basePay: 40,
-    rainBonus: 20,
-    accept: "The stall hands you a steel dabba. Keep it upright on the way to the college strip.",
-    clear: "The gate takes the chai. Forty rupees, counted once.",
-    rain: "Wet, but the dabba stayed upright. The gate pays sixty, rain included.",
   },
   {
     id: "notes-drop",
-    kind: "delivery",
     title: "Notes drop",
-    giver: "bookshop",
+    pay: 50,
+    accept: "A wrapped bundle of notes. Someone is waiting by the signal.",
+    complete: "The signal takes the bundle. Fifty rupees.",
+    giver: "chai-stall",
     dropoff: "signal",
-    basePay: 50,
-    rainBonus: 25,
-    accept: "A paper bundle of second-hand notes. A junior is waiting by the signal.",
-    clear: "The junior takes the notes. Fifty rupees.",
-    rain: "The junior shields the notes and adds twenty-five for the rain. Seventy-five.",
-  },
-  {
-    id: "stall-regular",
-    kind: "story",
-    title: "The stall's regular",
-    place: "chai-stall",
-    lines: [
-      "The stall has kept its kettle through three batches of the college.",
-      "Regulars do not order. They arrive, and the cutting is already poured.",
-      "The road changed around it. The kettle did not.",
-    ],
-  },
-  {
-    id: "red-means-talk",
-    kind: "story",
-    title: "Red means talk",
-    place: "signal",
-    lines: [
-      "One evening the signal stayed red, and the road became a verandah.",
-      "Someone shared a newspaper. Nobody was in a hurry to be a vehicle.",
-      "When it turned green, FC Road remembered it was a road.",
-    ],
   },
 ];
-
-const BY_ID = Object.fromEntries(MISSIONS.map((mission) => [mission.id, mission]));
 
 export function createProgress() {
   return {
     missions: MISSIONS.map((mission) => ({
       id: mission.id,
-      kind: mission.kind,
+      kind: "delivery",
       title: mission.title,
       status: "available",
-      step: 0,
     })),
     carrying: null,
   };
 }
 
-function cloneProgress(progress) {
+function clone(progress) {
   return {
     carrying: progress.carrying,
     missions: progress.missions.map((mission) => ({ ...mission })),
   };
 }
 
-function findMission(progress, id) {
-  return progress.missions.find((mission) => mission.id === id);
-}
-
-function payFor(id, weather) {
-  const mission = BY_ID[id];
-  return mission.basePay + (weather === "rain" ? mission.rainBonus : 0);
+function mission(progress, id) {
+  return progress.missions.find((item) => item.id === id);
 }
 
 function result(progress, extra = {}) {
   return { progress, pay: 0, line: null, ...extra };
 }
 
-function acceptDelivery(progress, id, weather) {
+function accept(progress, id) {
   if (progress.carrying) {
-    return result(progress, { line: "Your bag already has a job." });
+    return result(progress, { line: "Your bag already has a run." });
   }
-  const mission = findMission(progress, id);
-  mission.status = "active";
+  const job = mission(progress, id);
+  job.status = "active";
   progress.carrying = id;
-  const extra = { line: BY_ID[id].accept };
-  if (weather) extra.weather = weather;
-  return result(progress, extra);
+  return result(progress, { line: MISSIONS.find((item) => item.id === id).accept });
 }
 
-function completeDelivery(progress, id, weather) {
-  const mission = findMission(progress, id);
-  mission.status = "done";
+function complete(progress, id) {
+  const spec = MISSIONS.find((item) => item.id === id);
+  const job = mission(progress, id);
+  job.status = "done";
   progress.carrying = null;
-  const pay = payFor(id, weather);
-  const spoken = BY_ID[id];
-  return result(progress, {
-    pay,
-    line: weather === "rain" ? spoken.rain : spoken.clear,
-  });
+  return result(progress, { pay: spec.pay, line: spec.complete });
 }
 
-function advanceStory(progress, id) {
-  const mission = findMission(progress, id);
-  if (mission.status === "done") return result(progress);
-  const script = BY_ID[id].lines;
-  const step = mission.step + 1;
-  mission.step = step;
-  mission.status = step >= script.length ? "done" : "active";
-  return result(progress, { line: script[step - 1] });
-}
+export function interactAt(progress, placeId) {
+  const next = clone(progress);
+  const cutting = mission(next, "cutting-run");
+  const notes = mission(next, "notes-drop");
 
-function atStall(progress, weather) {
-  const cutting = findMission(progress, "cutting-run");
-  const story = findMission(progress, "stall-regular");
-  if (cutting.status === "available") return acceptDelivery(progress, "cutting-run", "rain");
-  if (progress.carrying === "cutting-run") {
-    return result(progress, { line: "The dabba is already in the bag. The college strip is ahead." });
+  if (placeId === "chai-stall") {
+    if (cutting.status === "available") return accept(next, "cutting-run");
+    if (next.carrying) return result(next, { line: "Your bag already has a run." });
+    if (cutting.status === "done" && notes.status === "available") return accept(next, "notes-drop");
+    return result(next, { line: "The kettle stays on. Today's runs are done." });
   }
-  if (progress.carrying) return result(progress, { line: "Your bag already has a job." });
-  if (cutting.status === "done" && story.status !== "done") return advanceStory(progress, "stall-regular");
-  return result(progress);
-}
 
-function atBookshop(progress) {
-  const notes = findMission(progress, "notes-drop");
-  if (notes.status === "available") return acceptDelivery(progress, "notes-drop");
-  if (progress.carrying) return result(progress, { line: "Your bag already has a job." });
-  return result(progress);
-}
+  if (placeId === "college-strip" && next.carrying === "cutting-run") {
+    return complete(next, "cutting-run");
+  }
 
-function atCollege(progress, weather) {
-  if (progress.carrying === "cutting-run") return completeDelivery(progress, "cutting-run", weather);
-  return result(progress);
-}
+  if (placeId === "signal" && next.carrying === "notes-drop") {
+    return complete(next, "notes-drop");
+  }
 
-function atSignal(progress, weather) {
-  if (progress.carrying === "notes-drop") return completeDelivery(progress, "notes-drop", weather);
-  if (progress.carrying) return result(progress, { line: "Your bag already has a job." });
-  const story = findMission(progress, "red-means-talk");
-  if (story.status !== "done") return advanceStory(progress, "red-means-talk");
-  return result(progress);
-}
+  if (placeId === "bookshop") {
+    return result(next, { line: "Second-hand syllabi, and a fan that never quite stops." });
+  }
 
-const PLACES = {
-  "chai-stall": atStall,
-  bookshop: atBookshop,
-  "college-strip": atCollege,
-  signal: atSignal,
-};
+  if (placeId === "college-strip") {
+    return result(next, { line: "The college strip is bags, notice boards, and people who are late on purpose." });
+  }
 
-export function interactAt(progress, placeId, weather) {
-  const next = cloneProgress(progress);
-  const visit = PLACES[placeId];
-  if (!visit) return result(next);
-  return visit(next, weather);
+  if (placeId === "signal") {
+    return result(next, { line: "The signal holds FC Road for a breath." });
+  }
+
+  return result(next);
 }

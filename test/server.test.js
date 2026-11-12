@@ -52,14 +52,22 @@ describe("GTPUNE server", () => {
     assert.match(html, /data-area="karve-nagar"/);
     assert.match(html, /data-area="fc-road"/);
     assert.match(html, /Locked/);
+    assert.match(html, /Shift sprint/);
+    assert.match(html, /Space jump/);
     assert.match(html, /E interact/);
-    assert.match(html, /H honk/);
+    assert.match(html, /F enter/);
+    assert.match(html, /H horn/);
     assert.doesNotMatch(html, /id="pickup"/);
   });
 
-  it("serves the game client", async () => {
-    const response = await fetch(`${base}/client.js`);
-    assert.equal(response.status, 200);
-    assert.match(response.headers.get("content-type") ?? "", /javascript/);
+  it("serves the game and the physics libraries", async () => {
+    const game = await fetch(`${base}/game.js`);
+    assert.equal(game.status, 200);
+    assert.match(game.headers.get("content-type") ?? "", /javascript/);
+    const three = await fetch(`${base}/vendor/three/three.module.js`);
+    assert.equal(three.status, 200);
+    const wasm = await fetch(`${base}/vendor/rapier/rapier_wasm3d_bg.wasm`);
+    assert.equal(wasm.status, 200);
+    assert.match(wasm.headers.get("content-type") ?? "", /wasm/);
   });
 });
