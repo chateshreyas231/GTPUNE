@@ -48,17 +48,35 @@
     <div id="toast" role="status" aria-live="polite"></div>
     <div id="dialogue" role="status" hidden></div>
     <footer>
-      <section class="map-panel">
+      <section class="map-panel" id="map-panel">
         <div class="map-label">
-          <span>पुणे <b>/ PUNE</b></span
-          ><span>N ↑</span>
+          <span>पुणे <b>/ PUNE</b></span>
+          <span class="map-actions">
+            <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
+            <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
+            <button id="map-min" type="button">MIN</button>
+            <button id="map-size" type="button">EXPAND</button>
+          </span>
         </div>
         <canvas
           id="map"
-          width="260"
-          height="170"
-          aria-label="Minimap with player and destination"
+          width="520"
+          height="340"
+          aria-label="Street map with you, traffic, people, buildings, and places"
         ></canvas>
+        <div class="map-options" id="map-options">
+          <label><input id="layer-roads" type="checkbox" checked /> Roads</label>
+          <label><input id="layer-buildings" type="checkbox" checked /> Buildings</label>
+          <label><input id="layer-traffic" type="checkbox" checked /> Traffic</label>
+          <label><input id="layer-people" type="checkbox" checked /> People</label>
+          <label><input id="layer-places" type="checkbox" checked /> Places</label>
+        </div>
+        <div class="map-legend">
+          <span><i class="you"></i> You</span>
+          <span><i class="car"></i> Traffic</span>
+          <span><i class="person"></i> People</span>
+          <span><i class="place"></i> Places</span>
+        </div>
         <div class="map-bottom">
           <span id="map-source">ILLUSTRATIVE CITY · NOT SURVEYED</span
           ><span class="live">● LIVE</span>
@@ -104,7 +122,9 @@
       <p>
         WASD or arrow keys to drive or walk. Space brakes. E gets out of the car
         when stopped; return nearby to get in. C changes the camera. H honks. T
-        speaks with a nearby pedestrian. P pauses.
+        speaks with a nearby pedestrian. P pauses. The map can be minimized or
+        expanded, and its checkboxes hide roads, buildings, traffic, people, or
+        places.
       </p>
       <p>
         Visit the three amber markers on your evening run. Use “Return to
