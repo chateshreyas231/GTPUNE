@@ -144,6 +144,20 @@ test("two-wheelers outnumber cars and each body is its own mesh and tone", () =>
   assert.ok(cars.every((body) => CAR_BODIES.includes(body)));
   assert.ok(new Set(bikes).size === BIKE_BODIES.length);
   assert.ok(new Set(cars).size === CAR_BODIES.length);
+  const named = (root, name) => {
+    let found = null;
+    root.traverse((child) => {
+      if (child.name === name) found = child;
+    });
+    return found;
+  };
+  for (const body of CAR_BODIES) {
+    const hood = named(makeVehicle(body), "hood");
+    assert.ok(hood, body);
+    assert.notEqual(hood.geometry.type, "BoxGeometry");
+  }
+  const tank = named(makeVehicle("geared-bike"), "tank");
+  assert.equal(tank.geometry.type, "LatheGeometry");
 });
 
 test("a trip continues through a junction instead of pacing back", () => {

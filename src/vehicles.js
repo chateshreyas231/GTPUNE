@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
 // Two-wheelers outnumber cars by 4 to 1. Bodies are original meshes.
 export const STREET_FLEET = { cars: 12, motorcycles: 48 };
@@ -60,6 +61,17 @@ function builder(color) {
   };
   const box = (w, h, d, material, x, y, z) =>
     add(new THREE.BoxGeometry(w, h, d), material, x, y, z);
+  const round = (w, h, d, material, x, y, z, radius = 0.14, name) => {
+    const mesh = add(new RoundedBoxGeometry(w, h, d, 3, radius), material, x, y, z);
+    if (name) mesh.name = name;
+    return mesh;
+  };
+  const blob = (w, h, d, material, x, y, z, name) => {
+    const mesh = add(new THREE.SphereGeometry(0.5, 16, 12), material, x, y, z);
+    mesh.scale.set(w, h, d);
+    if (name) mesh.name = name;
+    return mesh;
+  };
   const wheel = (x, z, radius) => {
     const hub = new THREE.Group();
     hub.position.set(x, radius, z);
@@ -84,7 +96,7 @@ function builder(color) {
     rim.rotation.z = Math.PI / 2;
     return hub;
   };
-  return { g, add, box, wheel, paint, dark, metal, glass };
+  return { g, add, box, round, blob, wheel, paint, dark, metal, glass };
 }
 
 function finish(g, body, exhaust) {
@@ -97,105 +109,120 @@ function finish(g, body, exhaust) {
 }
 
 function compactSuv(color) {
-  const { g, box, wheel, paint, glass, dark } = builder(color);
+  const { g, box, round, blob, wheel, paint, glass, dark } = builder(color);
   const wheels = [
     wheel(-0.78, -1.35, 0.38),
     wheel(0.78, -1.35, 0.38),
     wheel(-0.78, 1.4, 0.38),
     wheel(0.78, 1.4, 0.38),
   ];
-  box(1.78, 0.48, 4.15, paint, 0, 0.78, 0);
-  box(1.55, 0.22, 1.35, paint, 0, 0.95, -1.25);
-  box(1.62, 0.58, 1.9, paint, 0, 1.22, -0.05);
-  box(1.4, 0.36, 1.55, glass, 0, 1.28, -0.02);
-  box(1.7, 0.08, 0.12, dark, 0, 0.55, -2.05);
+  round(1.72, 0.46, 3.55, paint, 0, 0.62, 0, 0.2);
+  blob(1.32, 0.26, 1.15, paint, 0, 0.78, -1.28, "hood");
+  round(1.46, 0.5, 1.65, paint, 0, 1.02, 0.28, 0.18, "roof");
+  round(1.12, 0.3, 1.2, glass, 0, 1.05, 0.22, 0.08);
+  for (const [x, z] of [
+    [-0.78, -1.3],
+    [0.78, -1.3],
+    [-0.78, 1.25],
+    [0.78, 1.25],
+  ])
+    blob(0.52, 0.2, 0.68, paint, x, 0.58, z, "fender");
+  box(0.34, 0.08, 0.03, glass, -0.42, 0.68, -1.76);
+  box(0.34, 0.08, 0.03, glass, 0.42, 0.68, -1.76);
+  box(0.32, 0.08, 0.02, dark, 0, 0.46, -1.8);
   g.userData.wheels = wheels;
-  return finish(g, "compact-suv", [0.55, 0.42, 2.12]);
+  return finish(g, "compact-suv", [0.55, 0.42, 2.05]);
 }
 
 function boxyOffroader(color) {
-  const { g, add, box, wheel, paint, glass, dark, metal } = builder(color);
+  const { g, add, box, round, blob, wheel, paint, glass, dark, metal } = builder(color);
   const wheels = [
     wheel(-0.82, -1.15, 0.44),
     wheel(0.82, -1.15, 0.44),
     wheel(-0.82, 1.2, 0.44),
     wheel(0.82, 1.2, 0.44),
   ];
-  box(1.72, 0.62, 3.55, paint, 0, 1.02, 0);
-  box(1.62, 0.78, 1.85, paint, 0, 1.62, -0.05);
-  box(1.4, 0.48, 1.4, glass, 0, 1.68, -0.05);
-  box(1.74, 0.08, 3.5, dark, 0, 0.68, 0);
+  round(1.68, 0.58, 2.15, paint, 0, 0.95, 0.15, 0.08);
+  blob(1.4, 0.42, 1.15, paint, 0, 1.05, -1.05, "hood");
+  round(1.58, 0.72, 1.7, paint, 0, 1.52, 0.15, 0.1, "roof");
+  round(1.28, 0.42, 1.25, glass, 0, 1.58, 0.1, 0.06);
+  for (const x of [-0.86, 0.86]) blob(0.48, 0.26, 0.78, paint, x, 0.62, -1.05, "fender");
+  box(0.46, 0.12, 0.04, glass, 0, 0.82, -1.58);
   const spare = add(
     new THREE.CylinderGeometry(0.34, 0.34, 0.16, 12),
     dark,
     0,
     1.25,
-    1.9,
+    1.72,
   );
   spare.rotation.x = Math.PI / 2;
-  add(new THREE.TorusGeometry(0.22, 0.04, 6, 10), metal, 0, 1.25, 1.99);
+  add(new THREE.TorusGeometry(0.22, 0.04, 6, 10), metal, 0, 1.25, 1.81);
   g.userData.wheels = wheels;
   g.userData.spare = true;
-  return finish(g, "boxy-offroader", [-0.55, 0.55, 1.85]);
+  return finish(g, "boxy-offroader", [-0.55, 0.55, 1.7]);
 }
 
 function tallSuv(color) {
-  const { g, box, wheel, paint, glass, dark } = builder(color);
+  const { g, box, round, blob, wheel, paint, glass, dark } = builder(color);
   const wheels = [
     wheel(-0.86, -1.55, 0.4),
     wheel(0.86, -1.55, 0.4),
     wheel(-0.86, 1.55, 0.4),
     wheel(0.86, 1.55, 0.4),
   ];
-  box(1.9, 0.55, 4.7, paint, 0, 0.86, 0);
-  box(1.78, 0.95, 2.55, paint, 0, 1.55, 0.15);
-  box(1.55, 0.62, 2.15, glass, 0, 1.62, 0.1);
-  box(1.84, 0.1, 0.16, dark, 0, 0.58, -2.35);
+  round(1.84, 0.5, 4.15, paint, 0, 0.68, 0, 0.2);
+  blob(1.45, 0.3, 1.3, paint, 0, 0.86, -1.45, "hood");
+  round(1.62, 0.78, 2.15, paint, 0, 1.28, 0.3, 0.2, "roof");
+  round(1.28, 0.46, 1.6, glass, 0, 1.32, 0.22, 0.1);
+  for (const x of [-0.9, 0.9]) blob(0.46, 0.24, 0.8, paint, x, 0.55, -1.45, "fender");
+  box(0.38, 0.12, 0.03, dark, 0, 0.52, -2.15);
   g.userData.wheels = wheels;
-  return finish(g, "tall-suv", [0.62, 0.48, 2.42]);
+  return finish(g, "tall-suv", [0.62, 0.48, 2.2]);
 }
 
 function scooter(color, apronWidth, lengthScale, body) {
-  const { g, add, box, wheel, paint, dark, glass } = builder(color);
+  const { g, add, box, blob, wheel, paint, dark, glass } = builder(color);
   const front = wheel(0, -0.72 * lengthScale, 0.24);
   const rear = wheel(0, 0.62 * lengthScale, 0.24);
-  box(0.12, 0.08, 1.15 * lengthScale, dark, 0, 0.36, -0.05);
-  box(0.28, 0.08, 0.55 * lengthScale, dark, 0, 0.42, 0.15 * lengthScale);
-  box(apronWidth, 0.55, 0.28, paint, 0, 0.72, -0.62 * lengthScale);
-  box(0.22, 0.16, 0.34, paint, 0, 0.58, 0.28 * lengthScale);
+  add(new THREE.CylinderGeometry(0.035, 0.04, 1.15 * lengthScale, 8), dark, 0, 0.36, -0.05).rotation.x =
+    Math.PI / 2;
+  blob(0.32, 0.1, 0.5 * lengthScale, dark, 0, 0.42, 0.12 * lengthScale);
+  blob(apronWidth, 0.52, 0.36, paint, 0, 0.72, -0.58 * lengthScale, "apron");
+  blob(0.24, 0.16, 0.32, paint, 0, 0.58, 0.28 * lengthScale);
   const lamp = add(
-    new THREE.BoxGeometry(apronWidth * 0.45, 0.1, 0.06),
+    new THREE.BoxGeometry(apronWidth * 0.4, 0.08, 0.04),
     glass,
     0,
     0.78,
-    -0.76 * lengthScale,
+    -0.74 * lengthScale,
   );
-  lamp.name = "apron";
-  add(new THREE.BoxGeometry(0.08, 0.28, 0.06), dark, 0, 0.95, -0.35);
-  add(new THREE.BoxGeometry(0.42, 0.04, 0.08), dark, 0, 1.08, -0.28);
+  lamp.name = "lamp";
+  add(new THREE.CylinderGeometry(0.02, 0.02, 0.32, 6), dark, 0, 0.98, -0.32);
+  add(new THREE.BoxGeometry(0.42, 0.03, 0.05), dark, 0, 1.12, -0.28);
   const rider = new THREE.Group();
   rider.position.set(0, 0.62, 0.12);
   g.add(rider);
-  add(new THREE.BoxGeometry(0.28, 0.32, 0.18), dark, 0, 0.28, 0, rider);
-  add(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshStandardMaterial({ color: 0xd6b08a, roughness: 0.8 }), 0, 0.52, 0, rider);
+  add(new THREE.SphereGeometry(0.16, 10, 8), dark, 0, 0.22, 0, rider).scale.set(1.1, 1.3, 0.8);
+  add(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshStandardMaterial({ color: 0xd6b08a, roughness: 0.8 }), 0, 0.48, 0, rider);
   g.userData.wheels = [front, rear];
   g.userData.apron = apronWidth;
   return finish(g, body, [0.12, 0.32, 0.78 * lengthScale]);
 }
 
 function moped(color) {
-  const { g, add, box, wheel, paint, dark } = builder(color);
+  const { g, add, box, blob, wheel, paint, dark } = builder(color);
   const front = wheel(0, -0.55, 0.18);
   const rear = wheel(0, 0.48, 0.18);
-  box(0.08, 0.06, 0.95, dark, 0, 0.28, -0.02);
-  box(0.16, 0.1, 0.22, paint, 0, 0.4, -0.15);
-  box(0.14, 0.08, 0.2, dark, 0, 0.36, 0.22);
-  add(new THREE.BoxGeometry(0.28, 0.03, 0.06), dark, 0, 0.72, -0.22);
+  add(new THREE.CylinderGeometry(0.025, 0.03, 0.95, 8), dark, 0, 0.28, -0.02).rotation.x =
+    Math.PI / 2;
+  blob(0.18, 0.12, 0.28, paint, 0, 0.4, -0.12, "hood");
+  blob(0.16, 0.08, 0.22, dark, 0, 0.36, 0.22);
+  add(new THREE.BoxGeometry(0.28, 0.025, 0.05), dark, 0, 0.72, -0.22);
   const rider = new THREE.Group();
   rider.position.set(0, 0.48, 0.08);
   g.add(rider);
-  add(new THREE.BoxGeometry(0.22, 0.26, 0.14), dark, 0, 0.22, 0, rider);
-  add(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshStandardMaterial({ color: 0xe2b890, roughness: 0.8 }), 0, 0.42, 0, rider);
+  add(new THREE.SphereGeometry(0.12, 8, 6), dark, 0, 0.18, 0, rider).scale.set(1, 1.4, 0.75);
+  add(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshStandardMaterial({ color: 0xe2b890, roughness: 0.8 }), 0, 0.4, 0, rider);
   g.userData.wheels = [front, rear];
   return finish(g, "moped", [0.08, 0.24, 0.62]);
 }
@@ -204,20 +231,38 @@ function gearedBike(color) {
   const { g, add, box, wheel, paint, dark, metal } = builder(color);
   const front = wheel(0, -0.78, 0.32);
   const rear = wheel(0, 0.72, 0.32);
-  box(0.1, 0.08, 1.45, dark, 0, 0.42, -0.02);
-  const tank = box(0.28, 0.22, 0.48, paint, 0, 0.72, -0.22);
+  add(new THREE.CylinderGeometry(0.04, 0.045, 1.45, 8), dark, 0, 0.42, -0.02).rotation.x =
+    Math.PI / 2;
+  const tank = add(
+    new THREE.LatheGeometry(
+      [
+        new THREE.Vector2(0.02, -0.22),
+        new THREE.Vector2(0.09, -0.14),
+        new THREE.Vector2(0.15, 0.02),
+        new THREE.Vector2(0.12, 0.14),
+        new THREE.Vector2(0.04, 0.22),
+      ],
+      14,
+    ),
+    paint,
+    0,
+    0.74,
+    -0.18,
+  );
+  tank.rotation.x = Math.PI / 2;
   tank.name = "tank";
-  const engine = box(0.26, 0.22, 0.32, metal, 0.02, 0.4, 0.05);
+  const engine = add(new THREE.SphereGeometry(0.14, 10, 8), metal, 0.02, 0.4, 0.08);
+  engine.scale.set(1.1, 0.85, 1.3);
   engine.name = "engine-block";
-  box(0.22, 0.06, 0.28, dark, 0, 0.7, 0.38);
+  add(new THREE.SphereGeometry(0.1, 8, 6), dark, 0, 0.68, 0.38).scale.set(1.1, 0.4, 1.3);
   add(new THREE.CylinderGeometry(0.04, 0.045, 0.55, 8), metal, 0.16, 0.32, 0.35).rotation.x =
     Math.PI / 2;
-  add(new THREE.BoxGeometry(0.5, 0.04, 0.05), dark, 0, 0.95, -0.45);
+  add(new THREE.BoxGeometry(0.5, 0.03, 0.04), dark, 0, 0.98, -0.48);
   const rider = new THREE.Group();
   rider.position.set(0, 0.72, 0.18);
   g.add(rider);
-  add(new THREE.BoxGeometry(0.3, 0.34, 0.18), dark, 0, 0.28, 0, rider);
-  add(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshStandardMaterial({ color: 0xd4a87c, roughness: 0.8 }), 0, 0.54, 0, rider);
+  add(new THREE.SphereGeometry(0.16, 10, 8), dark, 0, 0.22, 0, rider).scale.set(1.15, 1.35, 0.75);
+  add(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshStandardMaterial({ color: 0xd4a87c, roughness: 0.8 }), 0, 0.5, 0, rider);
   g.userData.wheels = [front, rear];
   g.userData.tank = true;
   return finish(g, "geared-bike", [0.16, 0.32, 0.95]);
