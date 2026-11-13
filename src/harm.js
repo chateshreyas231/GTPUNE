@@ -25,12 +25,17 @@ export function crashFromImpact(speed) {
   };
 }
 
-export function applyImpact(person, impact, dirX = 0, dirZ = 0) {
+export function applyImpact(person, impact, dirX = 0, dirZ = 0, options = {}) {
   const current = person || {};
   if (!impact?.knocked || current.dead)
     return { ...current, changed: false };
-  const health = Math.max(0, (current.health ?? 3) - (impact.dead ? 3 : 1));
-  const dead = Boolean(impact.dead) || health <= 0;
+  let health = Math.max(0, (current.health ?? 3) - (impact.dead ? 3 : 1));
+  let dead = Boolean(impact.dead) || health <= 0;
+  // A vehicle can knock the player down. It cannot kill them.
+  if (options.survive) {
+    dead = false;
+    health = Math.max(1, health);
+  }
   return {
     ...current,
     health,

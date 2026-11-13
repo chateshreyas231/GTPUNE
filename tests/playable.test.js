@@ -287,6 +287,31 @@ test("infill closes a gap between footprints and does not cover the road", () =>
   assert.equal(lone.length, 0);
 });
 
+test("a vehicle impact leaves the player alive and a hard hit can still kill a pedestrian", () => {
+  const player = { health: 3, x: 0, z: 0, down: false, dead: false };
+  const knocked = applyImpact(player, crashFromImpact(12), 1, 0, { survive: true });
+  assert.equal(knocked.down, true);
+  assert.equal(knocked.dead, false);
+  assert.ok(knocked.health > 0);
+  const again = applyImpact(
+    { ...knocked, down: false },
+    crashFromImpact(20),
+    1,
+    0,
+    { survive: true },
+  );
+  assert.equal(again.dead, false);
+  assert.ok(again.health > 0);
+  assert.equal(resumeWalking({ ...again, downUntil: Infinity }, 999), false);
+  const pedestrian = { health: 3, x: 2, z: 0, down: false, dead: false };
+  const killed = applyImpact(pedestrian, crashFromImpact(12), 1, 0);
+  assert.equal(killed.down, true);
+  assert.equal(killed.dead, true);
+  assert.equal(killed.health, 0);
+  assert.equal(canWalk(killed), false);
+  assert.equal(resumeWalking(killed, 999), false);
+});
+
 test("a car impact knocks a person down and a dead person stays down", () => {
   const person = { health: 3, x: 0, z: 0, down: false, dead: false };
   const hard = applyImpact(person, crashFromImpact(12), 1, 0);

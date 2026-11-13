@@ -1086,6 +1086,7 @@ function hitPlayer(impact, dirX, dirZ) {
     impact,
     dirX,
     dirZ,
+    { survive: true },
   );
   if (!next.changed) return;
   playerLife.health = next.health;
@@ -2066,6 +2067,7 @@ window.__pune = {
       surveyed: city.surveyed || city.buildings.length,
       playerDown: playerLife.down,
       playerDead: playerLife.dead,
+      playerHealth: playerLife.health,
       held: heldWeapon?.id || null,
       downPeople: pedestrians.filter((ped) => ped.down).length,
       deadPeople: pedestrians.filter((ped) => ped.dead).length,
@@ -2091,7 +2093,22 @@ window.__pune = {
       standMesh(ped.mesh);
       ped.mesh.position.set(ped.x, 0, ped.z);
       car.speed = 14;
-      return { name: ped.mesh.userData.name, x: ped.x, z: ped.z };
+      return { name: ped.mesh.userData.name, x: ped.x, z: ped.z, speed: car.speed };
+    },
+    armPlayer() {
+      const car = traffic.find((agent) => agent.kind === "car" && agent.points);
+      const dx = -Math.sin(car.yaw || 0),
+        dz = -Math.cos(car.yaw || 0);
+      walking = true;
+      avatar.visible = true;
+      playerLife.health = 3;
+      playerLife.down = false;
+      playerLife.dead = false;
+      playerLife.downUntil = null;
+      standMesh(avatar);
+      avatar.position.set(car.x + dx * 0.7, 0, car.z + dz * 0.7);
+      car.speed = 14;
+      return { speed: car.speed };
     },
     person(name) {
       const ped = pedestrians.find((person) => person.mesh.userData.name === name);
