@@ -302,6 +302,11 @@ footer {
   flex: 1;
   height: auto;
   min-height: 240px;
+  cursor: grab;
+  touch-action: none;
+}
+.map-panel.is-max #map.is-panning {
+  cursor: grabbing;
 }
 .map-options,
 .map-legend {
@@ -653,3 +658,21 @@ dialog .disclosure {
 #photo {
   color: #edbd6d;
 }
+
+.map-panel.is-max {
+  z-index: 40;
+  user-select: none;
+}
+@media (max-width: 800px), (max-height: 700px) {
+  .map-panel.is-max {
+    left: 12px;
+    top: 64px;
+    bottom: 12px;
+    width: min(760px, calc(100vw - 24px));
+  }
+  .map-panel.is-max #map {
+    height: auto;
+    min-height: 180px;
+  }
+}
+
