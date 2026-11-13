@@ -56,13 +56,13 @@ export function fallbackCity() {
   const stops = [
     { name: "FC ROAD", point: [-5, -450] },
     { name: "KOTHRUD", point: [-600, 300] },
-    { name: "DECCAN GYMKHANA", point: [-5, 70] },
+    { name: "DECCAN GYMKHANA", point: [-DRIVE_LANE_METERS / 2, 70] },
   ];
   return {
     source: "illustrative",
     roads,
     buildings,
-    spawn: [-5, 70],
+    spawn: [-DRIVE_LANE_METERS / 2, 70],
     stops,
     places: [],
   };

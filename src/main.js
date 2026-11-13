@@ -1,6 +1,25 @@
+import { loadProgress, saveProgress } from "./progress.js";
+import { createLaw, reportCrime, tickLaw } from "./law.js";
+import {
+  fcRoadFacadeProfile,
+  drawReferenceFacade,
+} from "./facade-reference.js";
+import { createAtmosphere, CameraZoomController } from "./atmosphere.js";
+import { createUrbanProps } from "./urban-props.js";
+import {
+  makePanzer,
+  rotateTurret,
+  firePanzer,
+  updatePanzer,
+} from "./panzer.js";
 import { createDelivery, tickDelivery, interactDelivery } from "./delivery.js";
 import { streetDetails, swayCanopies, laneMarking } from "./street-details.js";
-import { loadSurfacePhotos, hydrateResidents, prepareLooks, applyLook } from "./visual-assets.js";
+import {
+  loadSurfacePhotos,
+  hydrateResidents,
+  prepareLooks,
+  applyLook,
+} from "./visual-assets.js";
 import { cycleLook, defaultLook, lookById } from "./characters.js";
 import {
   ROAD_Y,
@@ -25,7 +44,11 @@ import {
   wallPositions,
 } from "./street-corners.js";
 import { lines } from "./dialogue.js";
-import { CINEMATIC, createCinematicComposer, thirdPersonRig } from "./cinematic.js";
+import {
+  CINEMATIC,
+  createCinematicComposer,
+  thirdPersonRig,
+} from "./cinematic.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
@@ -147,6 +170,7 @@ import {
   tickSchedule,
 } from "./incidents.js";
 const $ = (id) => document.getElementById(id);
+const savedProgress = loadProgress();
 let city = fallbackCity();
 try {
   const r = await fetch("/data/pune-osm.json");
@@ -213,7 +237,8 @@ const sky = new THREE.Mesh(
   }),
 );
 sky.frustumCulled = false;
-scene.add(sky);
+// The old warm dome is retained only as a legacy variable; the atmosphere owns the visible sky.
+sky.visible = false;
 const composer = createCinematicComposer(renderer, scene, camera);
 const hemi = new THREE.HemisphereLight(0xe7ecde, 0x676956, 2.3);
 scene.add(hemi);
@@ -328,7 +353,10 @@ function renderRoads(cx, cz) {
   const addRibbon = (positions, material) => {
     if (!positions.length) return;
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(positions, 3),
+    );
     const uv = new Float32Array((positions.length / 3) * 2);
     for (let i = 0, v = 0; i < positions.length; i += 3, v += 2) {
       uv[v] = positions[i] / 4;
@@ -524,7 +552,10 @@ function shopSpot(b) {
   const dx = best.b[0] - best.a[0],
     dz = best.b[1] - best.a[1],
     len2 = dx * dx + dz * dz || 1;
-  const t = Math.max(0, Math.min(1, ((x - best.a[0]) * dx + (z - best.a[1]) * dz) / len2));
+  const t = Math.max(
+    0,
+    Math.min(1, ((x - best.a[0]) * dx + (z - best.a[1]) * dz) / len2),
+  );
   const qx = best.a[0] + dx * t,
     qz = best.a[1] + dz * t;
   const toRoadX = qx - x,
@@ -533,7 +564,13 @@ function shopSpot(b) {
   let sx = x,
     sz = z,
     walked = 0;
-  while (walked < 80 && sx >= b.minX && sx <= b.maxX && sz >= b.minZ && sz <= b.maxZ) {
+  while (
+    walked < 80 &&
+    sx >= b.minX &&
+    sx <= b.maxX &&
+    sz >= b.minZ &&
+    sz <= b.maxZ
+  ) {
     walked += 0.5;
     sx = x + (toRoadX / vlen) * walked;
     sz = z + (toRoadZ / vlen) * walked;
@@ -551,7 +588,10 @@ function refreshSigns(cx, cz) {
   const near = [];
   for (const b of obstacles) {
     if (!isShopFront(b)) continue;
-    const dist = Math.hypot((b.minX + b.maxX) / 2 - cx, (b.minZ + b.maxZ) / 2 - cz);
+    const dist = Math.hypot(
+      (b.minX + b.maxX) / 2 - cx,
+      (b.minZ + b.maxZ) / 2 - cz,
+    );
     if (dist > 140) continue;
     near.push({ b, dist, label: frontageName(b) });
   }
@@ -564,13 +604,33 @@ function refreshSigns(cx, cz) {
     const width = Math.min(16, 4 + item.label.length * 0.42);
     const mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(width, width / 4),
-      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, side: THREE.DoubleSide }),
+      new THREE.MeshStandardMaterial({
+        map: tex,
+        roughness: 0.7,
+        side: THREE.DoubleSide,
+      }),
     );
     mesh.position.set(spot.x, 3.1, spot.z);
     mesh.rotation.y = spot.angle;
     mesh.name = item.label;
     signGroup.add(mesh);
   }
+}
+const referenceWallMats = new Map();
+function referenceWall(profile) {
+  if (!referenceWallMats.has(profile.id)) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 512;
+    drawReferenceFacade(c.getContext("2d"), profile);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    referenceWallMats.set(
+      profile.id,
+      new THREE.MeshStandardMaterial({ map: t, roughness: 0.9 }),
+    );
+  }
+  return referenceWallMats.get(profile.id);
 }
 function renderBuildings(cx, cz) {
   for (const mesh of [...buildingGroup.children]) {
@@ -605,7 +665,10 @@ function renderBuildings(cx, cz) {
     for (let i = 0; i < uv.count; i++)
       uv.setXY(i, uv.getX(i) / 10, uv.getY(i) / vScale);
     const look = buildingLook(b);
-    const wall = plasterMats.get(look.plaster) || plasterMats.get(GLASS_PLASTER);
+    const profile = fcRoadFacadeProfile(b);
+    const wall = profile
+      ? referenceWall(profile)
+      : plasterMats.get(look.plaster) || plasterMats.get(GLASS_PLASTER);
     const m = new THREE.Mesh(geo, [roofMat, wall]);
     m.castShadow = true;
     m.receiveShadow = true;
@@ -614,8 +677,7 @@ function renderBuildings(cx, cz) {
       (b.minX + b.maxX) / 2 - cx,
       (b.minZ + b.maxZ) / 2 - cz,
     );
-    const floors =
-      b.floors || Math.max(1, Math.round(b.height / storey));
+    const floors = b.floors || Math.max(1, Math.round(b.height / storey));
     if (isShopFront(b) && dist < 160 && shopBands < 40 && b.height > 3.2) {
       shopBands++;
       const bandShape = new THREE.Shape();
@@ -736,7 +798,7 @@ for (const stop of city.stops)
 function mergeStatic(root) {
   const batches = new Map();
   for (const object of [...root.children]) {
-    if (!object.isMesh) continue;
+    if (!object.isMesh || !object.visible) continue;
     object.updateMatrixWorld();
     const source = object.geometry.index
       ? object.geometry.toNonIndexed()
@@ -821,7 +883,10 @@ function closestOn(segments, x, z) {
       len2 = dx * dx + dz * dz || 1,
       t = Math.max(
         0.08,
-        Math.min(0.92, ((x - segment.a[0]) * dx + (z - segment.a[1]) * dz) / len2),
+        Math.min(
+          0.92,
+          ((x - segment.a[0]) * dx + (z - segment.a[1]) * dz) / len2,
+        ),
       ),
       d = Math.hypot(segment.a[0] + dx * t - x, segment.a[1] + dz * t - z);
     if (!best || d < best.d) best = { segment, t, d };
@@ -829,12 +894,14 @@ function closestOn(segments, x, z) {
   return best;
 }
 function beginTrip(agent, atNode = null) {
-  const goal = chooseGoal(
-    populationRoads,
-    [agent.x ?? city.spawn[0], agent.z ?? city.spawn[1]],
-    Math.max(28, (agent.minLength || 36) * 0.7),
-    agent.rng,
-  );
+  const goal =
+    agent.pursuitGoal ||
+    chooseGoal(
+      populationRoads,
+      [agent.x ?? city.spawn[0], agent.z ?? city.spawn[1]],
+      Math.max(28, (agent.minLength || 36) * 0.7),
+      agent.rng,
+    );
   const trip = planTrip({
     adjacency: driveAdj,
     fromSegment: agent.segment,
@@ -849,7 +916,10 @@ function beginTrip(agent, atNode = null) {
   if (atNode && Number.isFinite(agent.x)) points.unshift([agent.x, agent.z]);
   if (points.length < 2) {
     agent.segment =
-      populationRoads[Math.floor(agent.rng() * populationRoads.length) % populationRoads.length];
+      populationRoads[
+        Math.floor(agent.rng() * populationRoads.length) %
+          populationRoads.length
+      ];
     agent.t = 0.45;
     agent.direction = 1;
     if ((agent.tries || 0) < 3) {
@@ -919,7 +989,12 @@ for (let i = 0; i < 48; i++) {
   pedestrians.push(agent);
 }
 function clearSpawn(agent, gap, pace) {
-  if (Math.hypot((agent.x || 0) - city.spawn[0], (agent.z || 0) - city.spawn[1]) >= gap)
+  if (
+    Math.hypot(
+      (agent.x || 0) - city.spawn[0],
+      (agent.z || 0) - city.spawn[1],
+    ) >= gap
+  )
     return;
   const skip = advanceAlong(agent, gap / Math.max(pace, 0.4));
   agent.x = skip.x;
@@ -942,7 +1017,8 @@ function separateFrom(agent, others, gap) {
   for (let n = 0; n < 8; n++) {
     const crowded = others.some(
       (other) =>
-        other !== agent && Math.hypot(agent.x - other.x, agent.z - other.z) < gap,
+        other !== agent &&
+        Math.hypot(agent.x - other.x, agent.z - other.z) < gap,
     );
     if (!crowded) return;
     nudgeAlong(agent, gap);
@@ -963,16 +1039,20 @@ for (let i = 0; i < fleetCount; i++) {
   const kind = i < STREET_FLEET.motorcycles ? "motorcycle" : "car";
   const segment = populationRoads[(i * 3 + 1) % populationRoads.length];
   if (!segment || segment.length < 8) continue;
-  const color = kind === "motorcycle" ? bikeColors[i % bikeColors.length] : carColors[i % carColors.length];
+  const color =
+    kind === "motorcycle"
+      ? bikeColors[i % bikeColors.length]
+      : carColors[i % carColors.length];
   const mesh = makeVehicle(body, color);
   let t = 0.08 + ((i * 13) % 80) / 100;
   let direction = i % 2 ? 1 : -1;
   if (i < 10 && homeRoad && homeRoad.segment.length > 20) {
     const along = (16 + i * 6) / homeRoad.segment.length;
     direction = 1 - homeRoad.t >= homeRoad.t ? 1 : -1;
-    t = direction === 1
-      ? Math.min(0.9, homeRoad.t + along)
-      : Math.max(0.1, homeRoad.t - along);
+    t =
+      direction === 1
+        ? Math.min(0.9, homeRoad.t + along)
+        : Math.max(0.1, homeRoad.t - along);
   }
   const agent = {
     mesh,
@@ -991,7 +1071,10 @@ for (let i = 0; i < fleetCount; i++) {
   };
   scene.add(mesh);
   beginTrip(agent);
-  if (Math.hypot((agent.x || 0) - city.spawn[0], (agent.z || 0) - city.spawn[1]) < 14) {
+  if (
+    Math.hypot((agent.x || 0) - city.spawn[0], (agent.z || 0) - city.spawn[1]) <
+    14
+  ) {
     const skip = advanceAlong(agent, 18 / Math.max(agent.speed, 1));
     agent.x = skip.x;
     agent.z = skip.z;
@@ -1092,11 +1175,7 @@ serviceFleet().forEach((body, i) => {
   scene.add(mesh);
   beginTrip(agent);
   clearSpawn(agent, 16, agent.speed);
-  separateFrom(
-    agent,
-    traffic,
-    bodyRadius(kind) + bodyRadius("car") + 1.5,
-  );
+  separateFrom(agent, traffic, bodyRadius(kind) + bodyRadius("car") + 1.5);
   traffic.push(agent);
 });
 const liveIncidents = [];
@@ -1122,14 +1201,19 @@ function makeStreetWeapon(id) {
     mesh.rotation.z = 1.1;
     group.add(mesh);
   } else {
-    const mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16, 0), mat(0x6e6a62));
+    const mesh = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.16, 0),
+      mat(0x6e6a62),
+    );
     mesh.scale.set(1.15, 0.75, 1);
     group.add(mesh);
   }
   return group;
 }
 const weaponDrops = [];
-let loadout = emptyLoadout();
+let loadout = savedProgress
+  ? { owned: savedProgress.owned, selected: savedProgress.selected }
+  : emptyLoadout();
 let heldMesh = null;
 let attack = 0;
 const fist = new THREE.Mesh(
@@ -1138,7 +1222,7 @@ const fist = new THREE.Mesh(
 );
 fist.position.set(0.28, 1.05, 0.22);
 fist.visible = false;
-fist.userData.attachment=true;
+fist.userData.attachment = true;
 fist.castShadow = true;
 avatar.add(fist);
 const weaponBase = spawnAnchor
@@ -1255,7 +1339,8 @@ function buildStreetCorners() {
 }
 function renderPlaces() {
   const group = new THREE.Group();
-  const mat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.75 });
+  const mat = (c) =>
+    new THREE.MeshStandardMaterial({ color: c, roughness: 0.75 });
   const addBox = (parent, w, h, d, c, x, y, z) => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c));
     mesh.position.set(x, y, z);
@@ -1269,7 +1354,8 @@ function renderPlaces() {
     site.userData.place = place.kind;
     if (place.kind === "fuel") {
       for (const x of [-2.1, 2.1])
-        for (const z of [-1.3, 1.3]) addBox(site, 0.16, 3.1, 0.16, 0x4a463c, x, 1.55, z);
+        for (const z of [-1.3, 1.3])
+          addBox(site, 0.16, 3.1, 0.16, 0x4a463c, x, 1.55, z);
       addBox(site, 5, 0.14, 3.2, 0xc4553a, 0, 3.15, 0);
       addBox(site, 0.62, 1.05, 0.4, 0x2c3330, -0.7, 0.55, 0.1);
       addBox(site, 0.62, 1.05, 0.4, 0x2c3330, 0.7, 0.55, 0.1);
@@ -1278,8 +1364,26 @@ function renderPlaces() {
       addBox(site, 2.4, 0.1, 0.1, 0xb7c0bc, -1.3, 2.6, 0);
       addBox(site, 2.4, 0.1, 0.1, 0xb7c0bc, 1.3, 1.7, 0);
     } else if (place.kind === "school" || place.kind === "college") {
-      addBox(site, place.kind === "college" ? 8 : 6, 0.4, 5, 0xd8c39a, 0, 0.3, 0);
-      addBox(site, 0.2, place.kind === "college" ? 4.2 : 3.2, 0.2, 0x8d5a3c, 0, 2, 0);
+      addBox(
+        site,
+        place.kind === "college" ? 8 : 6,
+        0.4,
+        5,
+        0xd8c39a,
+        0,
+        0.3,
+        0,
+      );
+      addBox(
+        site,
+        0.2,
+        place.kind === "college" ? 4.2 : 3.2,
+        0.2,
+        0x8d5a3c,
+        0,
+        2,
+        0,
+      );
     } else if (place.kind === "store") {
       addBox(site, 2.4, 0.12, 1.1, 0x3d6a4a, 0, 2.4, 0);
       addBox(site, 1.6, 1.1, 0.2, 0xf4efe4, 0, 1.3, 0);
@@ -1314,14 +1418,47 @@ function renderPlaces() {
 renderPlaces();
 let detailedHumans = 0;
 buildStreetCorners();
-let lookId=defaultLook().id;
-Promise.all([hydrateResidents([...pedestrians.map(p=>p.mesh),...sellers.map(s=>s.mesh)]),prepareLooks()])
-.then(([n])=>{detailedHumans=n;if(applyLook(avatar,lookId))detailedHumans++;})
-.catch(e=>console.warn('Human asset fallback',e)).finally(dressSmokers);
+const atmosphere = createAtmosphere(scene, {
+  position: new THREE.Vector3(city.spawn[0], 0, city.spawn[1]),
+});
+const urban = createUrbanProps(scene, {
+  roads: roadSegments,
+  spawn: city.spawn,
+  blocked: collides,
+  player: avatar,
+  exhaust: false,
+});
+const footZoom = new CameraZoomController({
+  distance: CINEMATIC.footBack,
+  min: 2,
+  max: 25,
+});
+const carZoom = new CameraZoomController({
+  distance: CINEMATIC.carBack,
+  min: 4,
+  max: 35,
+});
+let smokingEnabled = false,
+  outfitIndex = 0;
+let lookId = savedProgress?.look || defaultLook().id;
+Promise.all([
+  hydrateResidents([
+    ...pedestrians.map((p) => p.mesh),
+    ...sellers.map((s) => s.mesh),
+  ]),
+  prepareLooks(),
+])
+  .then(([n]) => {
+    detailedHumans = n;
+    if (applyLook(avatar, lookId)) detailedHumans++;
+  })
+  .catch((e) => console.warn("Human asset fallback", e))
+  .finally(dressSmokers);
 let job = null,
   wallet = 0;
 try {
-  wallet = Number(localStorage.getItem("pune-wallet")) || 0;
+  wallet =
+    savedProgress?.wallet ?? (Number(localStorage.getItem("pune-wallet")) || 0);
 } catch {}
 let targetIndex = 0;
 const marker = new THREE.Group();
@@ -1363,6 +1500,8 @@ let lookPitch = 0.28;
 let vy = 0;
 let jumpQueued = false;
 const playerLife = { health: 3, down: false, dead: false, downUntil: null };
+let law = createLaw(),
+  pursuitIn = 0;
 let previousTime = performance.now();
 let audioContext, toastTimer;
 const toneNodes = new Map();
@@ -1394,8 +1533,12 @@ function vehicleObstacles(except = null) {
 function nearestVehicle(position, max = 7) {
   let best = null;
   for (const mesh of [player, ...spawnedRides.map((ride) => ride.mesh)]) {
-    const distance = Math.hypot(mesh.position.x - position.x, mesh.position.z - position.z);
-    if (distance <= max && (!best || distance < best.distance)) best = { mesh, distance };
+    const distance = Math.hypot(
+      mesh.position.x - position.x,
+      mesh.position.z - position.z,
+    );
+    if (distance <= max && (!best || distance < best.distance))
+      best = { mesh, distance };
   }
   return best;
 }
@@ -1483,7 +1626,11 @@ function updateSirens(listener) {
   const sweep = performance.now() / 1000;
   for (const [kind, node] of sirenNodes) {
     const gain = best.get(kind) || 0;
-    node.osc.frequency.setTargetAtTime(sirenFrequency(node.tone, sweep), now, 0.05);
+    node.osc.frequency.setTargetAtTime(
+      sirenFrequency(node.tone, sweep),
+      now,
+      0.05,
+    );
     node.gain.gain.setTargetAtTime(Math.min(0.045, gain * 0.06), now, 0.08);
   }
 }
@@ -1571,7 +1718,6 @@ function talk() {
   }
 }
 function reset() {
-  player = player;
   player.position.set(city.spawn[0], 0, city.spawn[1]);
   speed = 0;
   yaw = spawnHeading;
@@ -1592,7 +1738,13 @@ function reset() {
 function carChoices() {
   const cars = [];
   const add = (mesh, x, z, carSpeed, carYaw, agent) => {
-    if (!mesh || mesh.userData.kind !== "car") return;
+    if (
+      !mesh ||
+      !["car", "armor", "police", "ambulance", "fire"].includes(
+        mesh.userData.kind,
+      )
+    )
+      return;
     cars.push({
       id: mesh.uuid,
       kind: "car",
@@ -1604,12 +1756,20 @@ function carChoices() {
       agent,
     });
   };
-  if (walking) add(player, player.position.x, player.position.z, 0, player.rotation.y);
+  if (walking)
+    add(player, player.position.x, player.position.z, 0, player.rotation.y);
   for (const mesh of parkedCars)
     add(mesh, mesh.position.x, mesh.position.z, 0, mesh.rotation.y);
   for (const agent of traffic) {
-    if (agent.kind !== "car") continue;
-    add(agent.mesh, agent.x, agent.z, agent.speed, agent.yaw || agent.mesh.rotation.y, agent);
+    if (!["car", "police", "ambulance", "fire"].includes(agent.kind)) continue;
+    add(
+      agent.mesh,
+      agent.x,
+      agent.z,
+      agent.speed,
+      agent.yaw || agent.mesh.rotation.y,
+      agent,
+    );
   }
   return cars;
 }
@@ -1619,6 +1779,7 @@ function takeCar(choice) {
   for (let i = parkedCars.length - 1; i >= 0; i--)
     if (parkedCars[i] === mesh) parkedCars.splice(i, 1);
   if (choice.agent) {
+    law = reportCrime(law, "vehicleTheft");
     const index = traffic.indexOf(choice.agent);
     if (index >= 0) traffic.splice(index, 1);
   }
@@ -1664,11 +1825,36 @@ function toggleWalk() {
       toast("Stop the car before getting out.");
       return;
     }
-    const spot = player.position
-      .clone()
-      .add(new THREE.Vector3(Math.cos(yaw) * 3, 0, -Math.sin(yaw) * 3));
-    if (collides(spot.x, spot.z, 0.4)) {
-      toast("There is no room to exit here.");
+    const road = closestOn(roadSegments, player.position.x, player.position.z);
+    const exits = [];
+    if (road)
+      for (const side of [-1, 1])
+        for (const shift of [0, 2.5, -2.5, 4.5, -4.5]) {
+          const point = segmentPoint(
+            road.segment,
+            road.t,
+            sidewalkLateral(road.segment, side),
+          );
+          const dx =
+              (road.segment.b[0] - road.segment.a[0]) / road.segment.length,
+            dz = (road.segment.b[1] - road.segment.a[1]) / road.segment.length;
+          exits.push(
+            new THREE.Vector3(point[0] + dx * shift, 0, point[1] + dz * shift),
+          );
+        }
+    exits.sort(
+      (a, b) =>
+        a.distanceToSquared(player.position) -
+        b.distanceToSquared(player.position),
+    );
+    const spot = exits.find(
+      (q) =>
+        !collides(q.x, q.z, 0.4) &&
+        !blocksMove(q.x, q.z, 0.5, vehicleSolids(player)) &&
+        !pedestrians.some((p) => Math.hypot(q.x - p.x, q.z - p.z) < 1),
+    );
+    if (!spot) {
+      toast("There is no safe pavement exit here. Move the vehicle first.");
       return;
     }
     walking = true;
@@ -1829,7 +2015,7 @@ function showHeld() {
     heldMesh = makeStreetWeapon(weapon.id);
     heldMesh.position.set(0.34, 1.02, 0.12);
     heldMesh.rotation.y = 0.6;
-    heldMesh.userData.attachment=true;
+    heldMesh.userData.attachment = true;
     avatar.add(heldMesh);
   }
   paintHealth();
@@ -1837,7 +2023,9 @@ function showHeld() {
 function chooseSlot(slot) {
   const next = selectSlot(loadout, slot);
   if (!next.ok) {
-    toast(next.weapon ? `No ${next.weapon.name.toLowerCase()} yet.` : "Empty slot.");
+    toast(
+      next.weapon ? `No ${next.weapon.name.toLowerCase()} yet.` : "Empty slot.",
+    );
     return false;
   }
   loadout = next;
@@ -1861,7 +2049,9 @@ function takeOrSwing() {
     drop.taken = true;
     drop.mesh.visible = false;
     showHeld();
-    toast(`Picked up a ${selectedWeapon(loadout).name.toLowerCase()}. Number keys switch weapons.`);
+    toast(
+      `Picked up a ${selectedWeapon(loadout).name.toLowerCase()}. Number keys switch weapons.`,
+    );
     return;
   }
   swingWeapon();
@@ -1883,10 +2073,17 @@ function swingWeapon() {
     });
     if (!hit.hit) continue;
     const next = applyStrike(
-      { health: ped.health ?? 3, down: ped.down, dead: ped.dead, x: ped.x, z: ped.z },
+      {
+        health: ped.health ?? 3,
+        down: ped.down,
+        dead: ped.dead,
+        x: ped.x,
+        z: ped.z,
+      },
       hit,
     );
     settlePerson(ped, next, elapsed);
+    law = reportCrime(law, "assault");
     toast(
       next.dead
         ? `${ped.mesh.userData.name} went down.`
@@ -1906,7 +2103,11 @@ function spawnRide(kind) {
   const distance = 5.5 + Math.floor(spawnedRides.length / 2) * 3.6;
   const spot = parkBeside(here.x, here.z, facing, { distance, side });
   const mesh =
-    kind === "armor" ? makeArmoredCarrier() : makeVehicle("compact-suv", 0xc96b4a);
+    kind === "panzer"
+      ? makePanzer()
+      : kind === "armor"
+        ? makeArmoredCarrier()
+        : makeVehicle("compact-suv", 0xc96b4a);
   mesh.position.set(spot.x, 0, spot.z);
   mesh.rotation.y = spot.yaw;
   scene.add(mesh);
@@ -1915,9 +2116,52 @@ function spawnRide(kind) {
   return { kind, x: spot.x, z: spot.z };
 }
 function applyActionCheat(text) {
+  const code = String(text).trim().toUpperCase();
+  if (code === "PANZER") {
+    spawnRide("panzer");
+    toast(
+      "Panzer parked nearby. E enters; G flashes the cannon; Q/R turn its turret.",
+    );
+    return "panzer";
+  }
+  if (["DIWALI", "GANPATI", "KITES", "FESTIVALOFF"].includes(code)) {
+    const value = code === "FESTIVALOFF" ? "none" : code.toLowerCase();
+    atmosphere.setFestival(value);
+    $("festival").value = value;
+    toast("Festival: " + value);
+    return "festival";
+  }
+  if (code === "CLOTHES") {
+    const colors = [0x246a82, 0xb9503f, 0xd1b45f, 0x6a5a9c, 0xeeeece];
+    const changed = atmosphere.applyOutfit(
+      avatar,
+      colors[outfitIndex++ % colors.length],
+    );
+    toast(
+      changed ? "Outfit recolored." : "This character has no tintable outfit.",
+    );
+    return "clothes";
+  }
+  if (code === "WIND" || code === "CALM") {
+    atmosphere.setWind(code === "WIND" ? 2.6 : 0);
+    toast(code === "WIND" ? "The wind picks up." : "The wind settles.");
+    return "wind";
+  }
+  if (code === "SMOKE") {
+    smokingEnabled = urban.setSmoking(!smokingEnabled, avatar);
+    toast(smokingEnabled ? "Smoking prop on." : "Smoking prop off.");
+    return "smoking";
+  }
+  if (code === "BLUESKY" || code === "STORM" || code === "FOG") {
+    applyCityWeather("clear");
+    atmosphere.setWeather(
+      code === "STORM" ? "storm" : code === "FOG" ? "fog" : "clear",
+    );
+    toast("Weather: " + code);
+    return "weather";
+  }
   const parsed = readCheat(text);
   if (!parsed) {
-    toast("Unknown cheat.");
     return false;
   }
   if (parsed.effect === "weapon") {
@@ -2033,14 +2277,19 @@ function makeRider(kind, index) {
   return { body, color, mesh: makeVehicle(body, color) };
 }
 function spawnPedestrianBoost() {
-  const room = populationRoom(countedPeople(), PEDESTRIAN_CAP, PEDESTRIAN_BOOST);
+  const room = populationRoom(
+    countedPeople(),
+    PEDESTRIAN_CAP,
+    PEDESTRIAN_BOOST,
+  );
   const here = actor().position;
   for (let k = 0; k < room; k++) {
     const i = nextPedIndex++;
     const mesh = person(i);
     const along = (k % 2 ? 1 : -1) * (14 + (k % 6) * 6);
     const anchor = closestOn(populationRoads, here.x, here.z);
-    const segment = anchor?.segment || populationRoads[i % populationRoads.length];
+    const segment =
+      anchor?.segment || populationRoads[i % populationRoads.length];
     const shift = along / Math.max(segment.length || 1, 1);
     const t = anchor
       ? Math.max(0.08, Math.min(0.92, anchor.t + shift))
@@ -2138,14 +2387,20 @@ function spawnTrafficBoost() {
 }
 function applyCityWeather(name) {
   const look = weatherLook(name);
-  weatherName = ["drizzle", "monsoon", "blue-hour"].includes(name) ? name : "clear";
+  weatherName = ["drizzle", "monsoon", "blue-hour"].includes(name)
+    ? name
+    : "clear";
   night = look.night;
   scene.background.set(look.background);
   scene.fog.color.copy(scene.background);
   scene.fog.density = look.density;
   sun.intensity = look.sun;
   hemi.intensity = look.hemi;
-  rainStreaks.visible = look.rain;
+  rainStreaks.visible = false;
+  atmosphere.setNight(night);
+  atmosphere.setWeather(
+    name === "monsoon" ? "storm" : name === "drizzle" ? "rain" : "clear",
+  );
   rainStreaks.material.opacity = name === "monsoon" ? 0.62 : 0.4;
   $("lighting").textContent = look.label;
   if ($("temp")) $("temp").textContent = look.temp;
@@ -2187,8 +2442,14 @@ function hazardLamps(mesh, spots) {
 }
 function makeTeaStall() {
   const group = new THREE.Group();
-  const wood = new THREE.MeshStandardMaterial({ color: 0x8b5a34, roughness: 0.82 });
-  const cloth = new THREE.MeshStandardMaterial({ color: 0xd4652f, roughness: 0.72 });
+  const wood = new THREE.MeshStandardMaterial({
+    color: 0x8b5a34,
+    roughness: 0.82,
+  });
+  const cloth = new THREE.MeshStandardMaterial({
+    color: 0xd4652f,
+    roughness: 0.72,
+  });
   const steel = new THREE.MeshStandardMaterial({
     color: 0xc5c8cc,
     metalness: 0.55,
@@ -2201,7 +2462,10 @@ function makeTeaStall() {
     new THREE.MeshStandardMaterial({ color: 0xe7d7b4, roughness: 0.6 }),
   );
   top.position.y = 0.96;
-  const poleA = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.15, 6), wood);
+  const poleA = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.035, 0.035, 1.15, 6),
+    wood,
+  );
   poleA.position.set(-0.72, 1.5, -0.28);
   const poleB = poleA.clone();
   poleB.position.x = 0.72;
@@ -2211,7 +2475,10 @@ function makeTeaStall() {
   kettle.position.set(0.35, 1.12, 0.05);
   group.add(counter, top, poleA, poleB, awning, kettle);
   for (let i = 0; i < 3; i++) {
-    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.038, 0.07, 8), steel);
+    const cup = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.038, 0.07, 8),
+      steel,
+    );
     cup.position.set(-0.45 + i * 0.16, 1.04, 0.12);
     group.add(cup);
   }
@@ -2312,7 +2579,10 @@ function startIncident(spec) {
   }
   const stagger = liveIncidents.length * 26;
   const shift = stagger / Math.max(site.segment.length || 1, 1);
-  const t = Math.max(0.12, Math.min(0.88, site.t + (site.t < 0.5 ? shift : -shift)));
+  const t = Math.max(
+    0.12,
+    Math.min(0.88, site.t + (site.t < 0.5 ? shift : -shift)),
+  );
   const frame = roadFrame(site.segment, t);
   const side = 1;
   const live = {
@@ -2343,7 +2613,13 @@ function startIncident(spec) {
     );
   } else if (spec.id === "roadside-breakdown") {
     const lateral = Math.sign(side) * ((site.segment.width || 8) / 2 + 0.4);
-    const agent = parkIncidentVehicle("motorcycle", frame, lateral, spec.id, 0.55);
+    const agent = parkIncidentVehicle(
+      "motorcycle",
+      frame,
+      lateral,
+      spec.id,
+      0.55,
+    );
     live.agent = agent;
     live.agents.push(agent);
     live.lamps.push(
@@ -2375,7 +2651,13 @@ function startIncident(spec) {
       const dx = at[0] - placed[0];
       const dz = at[1] - placed[1];
       live.agents.push(
-        standPerson(nextPedIndex++, placed[0], placed[1], Math.atan2(-dx, -dz), spec.id),
+        standPerson(
+          nextPedIndex++,
+          placed[0],
+          placed[1],
+          Math.atan2(-dx, -dz),
+          spec.id,
+        ),
       );
     }
   }
@@ -2413,19 +2695,36 @@ function tickIncidents(dt) {
     if (live.left <= 0) finishIncident(i);
   }
 }
-function cheatOpen(){return cheatVisible;}
+function cheatOpen() {
+  return cheatVisible;
+}
+function persistProgress() {
+  saveProgress({
+    wallet,
+    look: lookId,
+    owned: loadout.owned,
+    selected: loadout.selected,
+    weather: weatherName,
+  });
+}
 function submitCheat(raw) {
   const match = matchCheat(raw);
   if (!match) {
-    const effect=applyActionCheat(raw);if(effect){closeCheat();return {effect};}
+    const effect = applyActionCheat(raw);
+    if (effect) {
+      persistProgress();
+      closeCheat();
+      return { effect };
+    }
     toast("That word does nothing.");
-    if ($("cheat-line")) $("cheat-line").value = "";
+    if ($("cheat-code")) $("cheat-code").value = "";
     return null;
   }
   let added = 0;
   if (match.effect === "pedestrians") added = spawnPedestrianBoost();
   else if (match.effect === "traffic") added = spawnTrafficBoost();
   else applyCityWeather(nextWeather(weatherName));
+  persistProgress();
   toast(cheatNotice(match.effect, weatherName, added));
   closeCheat();
   return { ...match, added, weather: weatherName };
@@ -2437,7 +2736,12 @@ function action(key) {
   }
   if (paused || !active) return;
   if (key === "e" && !playerLife.dead) toggleWalk();
-  if (key === "v") switchLook();
+  if (key === "v") {
+    switchLook();
+    persistProgress();
+  }
+  if (key === "g" && player.userData.tank && !walking)
+    firePanzer(player, elapsed);
   if (key === "f") {
     if (job && ["pickup", "delivery"].includes(job.phase)) interactJob();
     else takeOrSwing();
@@ -2450,13 +2754,19 @@ function action(key) {
   }
   if (key === "h") honk();
   if (key === "t") talk();
-  if (key === " " && walking && !blocksDriving(mapView) && avatar.position.y <= 0.05)
+  if (
+    key === " " &&
+    walking &&
+    !blocksDriving(mapView) &&
+    avatar.position.y <= 0.05
+  )
     jumpQueued = true;
 }
 window.addEventListener(
   "keydown",
   (event) => {
-    if (event.key !== "`" && event.key !== "~" && event.code !== "Backquote") return;
+    if (event.key !== "`" && event.key !== "~" && event.code !== "Backquote")
+      return;
     if (!active || $("instructions").open) return;
     event.preventDefault();
     event.stopPropagation();
@@ -2483,10 +2793,14 @@ $("cheat-box").addEventListener("submit", (e) => {
   const value = $("cheat-code").value;
   $("cheat-code").value = "";
   submitCheat(value);
-  closeCheat();
 });
 $("cheat-code").addEventListener("keydown", (e) => {
-  if (e.key === "Escape" || e.code === "Backquote" || e.key === "`" || e.key === "~") {
+  if (
+    e.key === "Escape" ||
+    e.code === "Backquote" ||
+    e.key === "`" ||
+    e.key === "~"
+  ) {
     e.preventDefault();
     e.stopPropagation();
     closeCheat();
@@ -2539,16 +2853,30 @@ window.addEventListener("mousemove", (event) => {
   lookYaw = next.yaw;
   lookPitch = next.pitch;
 });
-window.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape") return;
-  releaseLook();
-}, true);
+window.addEventListener(
+  "keydown",
+  (event) => {
+    if (event.key !== "Escape") return;
+    releaseLook();
+  },
+  true,
+);
 $("world").addEventListener("pointerdown", (event) => {
   if (!active || paused || event.button !== 0) return;
   if (event.target?.closest?.("#map-panel")) return;
   $("world").focus();
   if (walking) engageLook();
 });
+$("world").addEventListener(
+  "wheel",
+  (event) => {
+    if (!active || blocksDriving(mapView)) return;
+    event.preventDefault();
+    (walking ? footZoom : carZoom).wheel(event.deltaY);
+  },
+  { passive: false },
+);
+$("festival").onchange = () => atmosphere.setFestival($("festival").value);
 $("audio").onclick = enableSound;
 $("photo").onclick = () => {
   const oldPixelRatio = renderer.getPixelRatio(),
@@ -2618,7 +2946,9 @@ const mapLayers = {
 };
 const mapView = createMapView();
 try {
-  const savedLayers = JSON.parse(localStorage.getItem("pune-map-layers") || "{}");
+  const savedLayers = JSON.parse(
+    localStorage.getItem("pune-map-layers") || "{}",
+  );
   Object.assign(mapLayers, savedLayers);
   mapView.zoom = clampZoom(Number(localStorage.getItem("pune-map-zoom")) || 1);
   mapView.size = createMapView({
@@ -2685,7 +3015,12 @@ mapCanvas.addEventListener("pointerdown", (event) => {
   if (mapView.size !== "max" || event.button !== 0) return;
   event.stopPropagation();
   mapCanvas.setPointerCapture(event.pointerId);
-  mapDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+  mapDrag = {
+    id: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    moved: false,
+  };
   mapCanvas.classList.add("is-panning");
   syncMapHover();
 });
@@ -2790,7 +3125,10 @@ function drawMap() {
     map.fillStyle = "rgba(214, 206, 176, 0.28)";
     for (const b of city.buildings) {
       const p0 = b.points[0];
-      if (Math.abs(p0[0] - center.x) > reach || Math.abs(p0[1] - center.z) > reach)
+      if (
+        Math.abs(p0[0] - center.x) > reach ||
+        Math.abs(p0[1] - center.z) > reach
+      )
         continue;
       map.beginPath();
       b.points.forEach((p, i) =>
@@ -2819,7 +3157,12 @@ function drawMap() {
         minZ = Math.min(minZ, p[1]);
         maxZ = Math.max(maxZ, p[1]);
       }
-      if (maxX < viewMinX || minX > viewMaxX || maxZ < viewMinZ || minZ > viewMaxZ)
+      if (
+        maxX < viewMinX ||
+        minX > viewMaxX ||
+        maxZ < viewMinZ ||
+        minZ > viewMaxZ
+      )
         continue;
       map.lineWidth = Math.max(1.2, r.width * scale * 0.35);
       map.beginPath();
@@ -2901,14 +3244,24 @@ function drawMap() {
       if (mapView.size === "max") {
         map.fillStyle = "#f6f3e6";
         map.font = `${Math.max(11, w / 48)}px sans-serif`;
-        map.fillText(place.name, sx(place.point[0]) + 8, sy(place.point[1]) - 6);
+        map.fillText(
+          place.name,
+          sx(place.point[0]) + 8,
+          sy(place.point[1]) - 6,
+        );
       }
     }
     city.stops.forEach((stop, index) => {
       const current = index === Math.min(targetIndex, city.stops.length - 1);
       map.fillStyle = current ? "#edbd6d" : "#8d7350";
       map.beginPath();
-      map.arc(sx(stop.point[0]), sy(stop.point[1]), current ? 6 : 4, 0, Math.PI * 2);
+      map.arc(
+        sx(stop.point[0]),
+        sy(stop.point[1]),
+        current ? 6 : 4,
+        0,
+        Math.PI * 2,
+      );
       map.fill();
       if (mapView.size === "max" || current) {
         map.fillStyle = "#f6f3e6";
@@ -2946,6 +3299,53 @@ function animate() {
   if (running) {
     elapsed += dt;
     tickIncidents(dt);
+    const pos = actor().position;
+    const officers = [
+      ...pedestrians.filter((p) => p.service === "police"),
+      ...traffic.filter((t) => t.kind === "police"),
+    ];
+    const seen = officers.some(
+      (p) => Math.hypot(p.x - pos.x, p.z - pos.z) < 75,
+    );
+    const nearOfficer = pedestrians.some(
+      (p) => p.service === "police" && Math.hypot(p.x - pos.x, p.z - pos.z) < 4,
+    );
+    law = tickLaw(law, dt, {
+      seen,
+      nearOfficer,
+      surrendering: walking && keys.has("x"),
+    });
+    if (law.arrested) {
+      wallet = Math.max(0, wallet - 150);
+      reset();
+      toast("Surrendered. ₹150 fine. Back at Deccan.");
+    }
+    pursuitIn -= dt;
+    if (pursuitIn <= 0) {
+      pursuitIn = 4;
+      for (const unit of officers) {
+        unit.pursuitGoal = law.stars ? [pos.x, pos.z] : null;
+        if (unit.pursuitGoal && unit.points) {
+          unit.points.unshift([unit.x, unit.z]);
+          const near = closestOn(driveSegments, unit.x, unit.z);
+          if (near) {
+            unit.segment = near.segment;
+            unit.t = near.t;
+          }
+          const oldX = unit.x,
+            oldZ = unit.z;
+          beginTrip(unit);
+          unit.points?.unshift([oldX, oldZ]);
+          unit.index = 0;
+          unit.x = oldX;
+          unit.z = oldZ;
+          unit.mesh.position.set(oldX, 0, oldZ);
+        }
+      }
+    }
+    $("wanted").textContent = law.stars
+      ? `${"★".repeat(law.stars)} ${seen ? "WANTED" : "SEARCHING"} · Hold X near an officer to surrender`
+      : "NO WANTED LEVEL";
     const drive = !blocksDriving(mapView);
     const p = actor().position;
     if (walking) {
@@ -2955,14 +3355,16 @@ function animate() {
         standMesh(avatar);
       }
       const mobile = resumeWalking(playerLife, elapsed);
-      const forward = mobile && drive
-        ? (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
-          (keys.has("s") || keys.has("arrowdown") ? 1 : 0)
-        : 0;
-      const strafe = mobile && drive
-        ? (keys.has("d") || keys.has("arrowright") ? 1 : 0) -
-          (keys.has("a") || keys.has("arrowleft") ? 1 : 0)
-        : 0;
+      const forward =
+        mobile && drive
+          ? (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
+            (keys.has("s") || keys.has("arrowdown") ? 1 : 0)
+          : 0;
+      const strafe =
+        mobile && drive
+          ? (keys.has("d") || keys.has("arrowright") ? 1 : 0) -
+            (keys.has("a") || keys.has("arrowleft") ? 1 : 0)
+          : 0;
       const sprint = drive && keys.has("shift");
       const top = forward || strafe ? footPace(sprint) : 0;
       let wishX = -Math.sin(lookYaw) * forward + Math.cos(lookYaw) * strafe;
@@ -3027,11 +3429,16 @@ function animate() {
           (keys.has("d") || keys.has("arrowright") ? 1 : 0)
         : 0;
       speed += accel * 12 * dt;
-      speed *= Math.exp(-dt * (drive && keys.has(" ") ? 5 : accel ? 0.13 : 0.7));
+      speed *= Math.exp(
+        -dt * (drive && keys.has(" ") ? 5 : accel ? 0.13 : 0.7),
+      );
       speed = THREE.MathUtils.clamp(speed, -9, 38);
       if (Math.abs(speed) > 0.15)
         yaw +=
-          steering * dt * Math.min(1.2, Math.abs(speed) * 0.12) * Math.sign(speed || 1);
+          steering *
+          dt *
+          Math.min(1.2, Math.abs(speed) * 0.12) *
+          Math.sign(speed || 1);
       const nx = p.x - Math.sin(yaw) * speed * dt,
         nz = p.z - Math.cos(yaw) * speed * dt;
       const hitTraffic = blocksMove(
@@ -3042,9 +3449,11 @@ function animate() {
       );
       const victim = pedestrians.find(
         (t) =>
-          Math.hypot(nx - t.x, nz - t.z) < bodyRadius(drivenKind()) + bodyRadius("person"),
+          Math.hypot(nx - t.x, nz - t.z) <
+          bodyRadius(drivenKind()) + bodyRadius("person"),
       );
       if (victim && !victim.down && Math.abs(speed) >= 1.5) {
+        law = reportCrime(law, "hitAndRun");
         const dx = nx - p.x,
           dz = nz - p.z,
           len = Math.hypot(dx, dz) || 1;
@@ -3074,7 +3483,8 @@ function animate() {
       else speed = 0;
       player.rotation.y = yaw;
       if (player.userData.wheels)
-        for (const wheel of player.userData.wheels) wheel.rotation.x -= speed * dt * 2.4;
+        for (const wheel of player.userData.wheels)
+          wheel.rotation.x -= speed * dt * 2.4;
       emitSmoke(player, Math.abs(speed), dt, player.userData);
     }
     const limit = city.source === "illustrative" ? 900 : 6500;
@@ -3093,10 +3503,18 @@ function animate() {
         people: pedestrians,
         bodies: [
           ...vehicleSolids(agent.mesh),
-          ...streetProps.map(prop=>({x:prop.x,z:prop.z,radius:prop.radius})),
+          ...streetProps.map((prop) => ({
+            x: prop.x,
+            z: prop.z,
+            radius: prop.radius,
+          })),
           walking
             ? { x: avatar.position.x, z: avatar.position.z, radius: 0.45 }
-            : { x: player.position.x, z: player.position.z, radius: bodyRadius("player-car") },
+            : {
+                x: player.position.x,
+                z: player.position.z,
+                radius: bodyRadius("player-car"),
+              },
         ],
       });
       const victim = gate.hit;
@@ -3183,9 +3601,13 @@ function animate() {
       if (ped.service === "junkie") applyWander(ped, dt);
       if (ped.points) {
         const probe = advanceAlong(ped, dt);
-        const bodies = [...vehicleSolids(null),...streetProps.map(p=>({x:p.x,z:p.z,radius:p.radius}))];
+        const bodies = [
+          ...vehicleSolids(null),
+          ...streetProps.map((p) => ({ x: p.x, z: p.z, radius: p.radius })),
+        ];
         for (const other of pedestrians) {
-          if (other !== ped) bodies.push({ x: other.x, z: other.z, radius: 0.45 });
+          if (other !== ped)
+            bodies.push({ x: other.x, z: other.z, radius: 0.45 });
         }
         bodies.push({
           x: actor().position.x,
@@ -3271,14 +3693,28 @@ function animate() {
       }
     }
   }
+  if (running) {
+    atmosphere.update(dt, elapsed, actor().position);
+    urban.update(dt, elapsed, actor().position, traffic);
+    if (player.userData.tank && !walking) {
+      if (keys.has("q")) rotateTurret(player, dt);
+      if (keys.has("r")) rotateTurret(player, -dt);
+    }
+  }
+  for (const ride of spawnedRides)
+    if (ride.mesh.userData.tank) updatePanzer(ride.mesh, dt);
   updateEngines(actor().position);
   updateSirens(actor().position);
   const sirenTime = performance.now() / 1000;
   for (const agent of traffic) {
     const lamps = agent.mesh.userData.beacons;
     if (!lamps?.length) continue;
-    const lit = beaconLit(agent.siren?.rate || 1, sirenTime + (agent.phase || 0));
-    for (const lamp of lamps) lamp.material.emissiveIntensity = lit ? 1.6 : 0.05;
+    const lit = beaconLit(
+      agent.siren?.rate || 1,
+      sirenTime + (agent.phase || 0),
+    );
+    for (const lamp of lamps)
+      lamp.material.emissiveIntensity = lit ? 1.6 : 0.05;
   }
   tickSmoke(dt);
   const hazeTime = performance.now() * 0.001;
@@ -3293,6 +3729,7 @@ function animate() {
     renderBuildings(p.x, p.z);
   if (active && walking) {
     const rig = thirdPersonRig({ walking: true, view });
+    if (view === 0) rig.back = footZoom.follow(Math.abs(speed) > 0.12);
     const orbit = rig.overhead ? 0.9 : lookPitch;
     const cosP = Math.cos(orbit);
     desiredCamera.set(
@@ -3307,6 +3744,7 @@ function animate() {
     );
   } else if (active) {
     const rig = thirdPersonRig({ walking: false, view });
+    if (view === 0) rig.back = carZoom.follow(Math.abs(speed) > 0.12);
     desiredCamera.set(
       p.x + Math.sin(yaw) * rig.back,
       p.y + rig.height,
@@ -3391,6 +3829,8 @@ if (cheatHelp) {
     .join(" · ");
 }
 paintHealth();
+if (savedProgress) applyCityWeather(savedProgress.weather);
+window.addEventListener("pagehide", persistProgress);
 window.__pune = {
   get state() {
     return {
@@ -3428,10 +3868,14 @@ window.__pune = {
       policeCars: traffic.filter((t) => t.kind === "police").length,
       ambulances: traffic.filter((t) => t.kind === "ambulance").length,
       fireEngines: traffic.filter((t) => t.kind === "fire").length,
-      motorcycles: traffic.filter((t) => t.kind === "motorcycle" && !t.incident).length,
+      motorcycles: traffic.filter((t) => t.kind === "motorcycle" && !t.incident)
+        .length,
       cars: traffic.filter((t) => t.kind === "car" && !t.incident).length,
       pedestrians: pedestrians.filter((ped) => !ped.incident).length,
       weather: weatherName,
+      atmosphere: atmosphere.state,
+      urban: urban.diagnostics,
+      cameraDistance: (walking ? footZoom : carZoom).distance,
       incidents: liveIncidents.map((item) => ({
         id: item.id,
         people: item.agents.filter((agent) => agent.kind === "person").length,
@@ -3449,6 +3893,8 @@ window.__pune = {
       playerDown: playerLife.down,
       playerDead: playerLife.dead,
       playerHealth: playerLife.health,
+      wanted: law.stars,
+      searchTime: law.search,
       look: lookId,
       lookName: lookById(lookId).name,
       lookLabel: lookById(lookId).label,
@@ -3517,7 +3963,12 @@ window.__pune = {
       standMesh(ped.mesh);
       ped.mesh.position.set(ped.x, 0, ped.z);
       car.speed = 14;
-      return { name: ped.mesh.userData.name, x: ped.x, z: ped.z, speed: car.speed };
+      return {
+        name: ped.mesh.userData.name,
+        x: ped.x,
+        z: ped.z,
+        speed: car.speed,
+      };
     },
     armPlayer() {
       const car = traffic.find((agent) => agent.kind === "car" && agent.points);
@@ -3535,7 +3986,9 @@ window.__pune = {
       return { speed: car.speed };
     },
     person(name) {
-      const ped = pedestrians.find((person) => person.mesh.userData.name === name);
+      const ped = pedestrians.find(
+        (person) => person.mesh.userData.name === name,
+      );
       return ped
         ? {
             down: ped.down,
@@ -3560,16 +4013,18 @@ window.__pune = {
       }
       return selectedWeapon(loadout).id;
     },
-    cheat(text) {
-      return applyActionCheat(text);
-    },
     focus(name) {
-      const ped = pedestrians.find((person) => person.mesh.userData.name === name);
+      const ped = pedestrians.find(
+        (person) => person.mesh.userData.name === name,
+      );
       if (!ped) return false;
       walking = true;
       avatar.visible = true;
       avatar.position.set(ped.x + 2.4, 0, ped.z + 3.2);
-      lookYaw = Math.atan2(-(ped.x - avatar.position.x), -(ped.z - avatar.position.z));
+      lookYaw = Math.atan2(
+        -(ped.x - avatar.position.x),
+        -(ped.z - avatar.position.z),
+      );
       lookPitch = 0.42;
       return true;
     },
@@ -3584,10 +4039,20 @@ window.__pune = {
           ? object.material
           : [object.material];
         for (const material of materials)
-          paints.push(`${material.name}:${material.color?.getHexString?.() || ""}`);
+          paints.push(
+            `${material.name}:${material.color?.getHexString?.() || ""}`,
+          );
       });
-      const size = new THREE.Box3().setFromObject(avatar).getSize(new THREE.Vector3());
-      return { skinned, paints, height: size.y, look: lookId, name: avatar.userData.name };
+      const size = new THREE.Box3()
+        .setFromObject(avatar)
+        .getSize(new THREE.Vector3());
+      return {
+        skinned,
+        paints,
+        height: size.y,
+        look: lookId,
+        name: avatar.userData.name,
+      };
     },
     cars() {
       return carChoices().map((car) => ({
@@ -3613,7 +4078,9 @@ window.__pune = {
       return { x, z, walking };
     },
     moveBody(name, x, z) {
-      const ped = pedestrians.find((person) => person.mesh.userData.name === name);
+      const ped = pedestrians.find(
+        (person) => person.mesh.userData.name === name,
+      );
       if (!ped) return null;
       ped.x = x;
       ped.z = z;

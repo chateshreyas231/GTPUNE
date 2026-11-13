@@ -752,3 +752,20 @@ dialog .disclosure {
 #photo {
   color: #edbd6d;
 }
+
+body:not(.playing) footer {
+  pointer-events: none;
+}
+
+body:not(.playing) .settings {
+  pointer-events: auto;
+}
+
+#wanted {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: #f2bd69;
+  max-width: 220px;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}

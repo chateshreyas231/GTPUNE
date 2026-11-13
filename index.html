@@ -7,7 +7,11 @@
     <title>PUNE / After Hours</title>
   </head>
   <body>
-    <canvas id="world" tabindex="0" aria-label="Interactive 3D Pune driving game"></canvas>
+    <canvas
+      id="world"
+      tabindex="0"
+      aria-label="Interactive 3D Pune driving game"
+    ></canvas>
     <div id="shade"></div>
     <header>
       <a class="brand" href="#">PUNE<span>AFTER HOURS</span></a>
@@ -52,8 +56,12 @@
         <div class="map-label">
           <span>पुणे <b>/ PUNE</b></span>
           <span class="map-actions">
-            <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
-            <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
+            <button id="map-zoom-out" type="button" aria-label="Zoom out">
+              −
+            </button>
+            <button id="map-zoom-in" type="button" aria-label="Zoom in">
+              +
+            </button>
             <button id="map-min" type="button">MIN</button>
             <button id="map-size" type="button">EXPAND</button>
             <button id="map-recenter" type="button" hidden>RECENTER</button>
@@ -66,11 +74,22 @@
           aria-label="Street map with you, traffic, people, buildings, and places"
         ></canvas>
         <div class="map-options" id="map-options">
-          <label><input id="layer-roads" type="checkbox" checked /> Roads</label>
-          <label><input id="layer-buildings" type="checkbox" checked /> Buildings</label>
-          <label><input id="layer-traffic" type="checkbox" checked /> Traffic</label>
-          <label><input id="layer-people" type="checkbox" checked /> People</label>
-          <label><input id="layer-places" type="checkbox" checked /> Places</label>
+          <label
+            ><input id="layer-roads" type="checkbox" checked /> Roads</label
+          >
+          <label
+            ><input id="layer-buildings" type="checkbox" checked />
+            Buildings</label
+          >
+          <label
+            ><input id="layer-traffic" type="checkbox" checked /> Traffic</label
+          >
+          <label
+            ><input id="layer-people" type="checkbox" checked /> People</label
+          >
+          <label
+            ><input id="layer-places" type="checkbox" checked /> Places</label
+          >
         </div>
         <div class="map-legend">
           <span><i class="you"></i> You</span>
@@ -85,6 +104,7 @@
       </section>
       <section id="dashboard">
         <div id="vitals">
+          <div id="wanted" role="status">NO WANTED LEVEL</div>
           <div id="health" aria-live="polite"><span>HEALTH 3/3</span></div>
           <div id="weapon">FISTS</div>
         </div>
@@ -92,7 +112,8 @@
         <div class="speed"><span id="speed">00</span><small>KM/H</small></div>
         <div class="speed-track"><i id="speed-bar"></i></div>
         <div class="gear">
-          <span id="gear">N</span><b id="time">17:42</b><span id="temp">24°C</span>
+          <span id="gear">N</span><b id="time">17:42</b
+          ><span id="temp">24°C</span>
         </div>
       </section>
       <section class="controls-bar">
@@ -102,7 +123,8 @@
         </div>
         <div>
           <kbd>V</kbd> GIRL / BOY / MAN <kbd>C</kbd> CAMERA <kbd>H</kbd> HORN
-          <kbd>T</kbd> TALK <kbd>1-4</kbd> WEAPONS <kbd>~</kbd> CHEATS <kbd>P</kbd> PAUSE
+          <kbd>T</kbd> TALK <kbd>1-4</kbd> WEAPONS <kbd>~</kbd> CHEATS
+          <kbd>P</kbd> PAUSE
         </div>
         <div class="settings">
           <button id="audio">SOUND OFF</button
@@ -112,7 +134,14 @@
             <option value="hi-IN">हिंदी</option>
             <option value="en-IN">ENGLISH</option></select
           ><button id="lighting">GOLDEN HOUR</button
-          ><button id="photo">4K PHOTO</button>
+          ><button id="photo">4K PHOTO</button
+          ><label for="festival">FESTIVAL</label
+          ><select id="festival">
+            <option value="none">EVERYDAY</option>
+            <option value="diwali">DIWALI</option>
+            <option value="ganpati">GANPATI</option>
+            <option value="kites">KITES</option>
+          </select>
         </div>
       </section>
     </footer>
@@ -124,7 +153,7 @@
       <label for="cheat-code">CHEAT</label>
       <input
         id="cheat-code"
-        maxlength="24"
+        maxlength="32"
         autocomplete="off"
         spellcheck="false"
         aria-label="Cheat code"
@@ -136,16 +165,18 @@
       <h2>Make yourself at home.</h2>
       <p>
         WASD or arrow keys to drive or walk. On foot, moving the mouse looks
-        around without holding a button, and walking follows that look. In
-        the car the camera follows the car. Esc releases the pointer. Shift
-        runs and Space jumps on foot; Space brakes in the car. E gets out
-        of a stopped car, and gets into any car within 7 metres. V switches
-        among the girl, the boy, and the man. C changes the camera.
-        H honks. T speaks with a nearby pedestrian. F punches or swings the selected weapon; 1–4 selects fists, pipe, stick, or stone. Tilde opens cheats. <span id="cheat-help"></span> P pauses. Cars stop
-        for people. The map can be
-        minimized or expanded. Drag the expanded map to move across Kothrud,
-        Deccan, and FC Road, use the wheel to zoom, and RECENTER to follow
-        yourself. Checkboxes hide roads, buildings, traffic, people, or places.
+        around without holding a button, and walking follows that look. In the
+        car the camera follows the car. Esc releases the pointer. Shift runs and
+        Space jumps on foot; Space brakes in the car. E gets out of a stopped
+        car, and gets into any car within 7 metres. V switches among the girl,
+        the boy, and the man. C changes the camera. H honks. T speaks with a
+        nearby pedestrian. F punches or swings the selected weapon; 1–4 selects
+        fists, pipe, stick, or stone. Tilde opens cheats.
+        <span id="cheat-help"></span> P pauses. Cars stop for people. The map
+        can be minimized or expanded. Drag the expanded map to move across
+        Kothrud, Deccan, and FC Road, use the wheel to zoom, and RECENTER to
+        follow yourself. Checkboxes hide roads, buildings, traffic, people, or
+        places.
       </p>
       <p>
         Visit the three amber markers on your evening run. Use “Return to

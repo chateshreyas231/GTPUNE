@@ -21,6 +21,7 @@ PORT=3001 npm start
 - E: exit a stopped car, or enter any car within 7 m.
 - V: switch the person on foot among the girl, the boy, and the man. The girl is the default.
 - C: cycle chase, close and overhead cameras.
+- Esc: release the mouse pointer while walking so you can use the HUD controls.
 - H: horn; enable sound with the SOUND button first.
 - T: talk to a pedestrian within 22 m. They turn toward you and reply. Select Marathi, Hindi or English.
 - F: punch with fists, or swing the selected street weapon. Keys 1–4 switch fists, pipe, stick, and stone. A pipe, stick, and stone lie on the pavement near the start. A cheat can also hand you the next street weapon.
@@ -72,3 +73,31 @@ The current result is a playable prototype, not a finished GTA-scale game or pho
 The selected first facade-reference target is **Goodluck Chowk toward Fergusson College**. Exact facade reconstruction awaits original overlapping video/photos or licensed reference assets. Current textures and props are illustrative; they do not establish the real colors or signs of those buildings.
 
 [Normalized user walking-tour links and capture requirements](docs/PUNE-REFERENCES.md). Those five videos remain unviewed because the proxy rejected requests.
+
+## Combined city controls
+
+The combined main build retains the original history and integrates the separate heights, narrow roads, cinematic grade, selectable characters, combat, services, incidents and pavement builds.
+
+| Control/code                                         | Behavior                                                                                                             |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| V                                                    | Cycle the three rigged player characters                                                                             |
+| E                                                    | Exit to a clear pavement spot; enter a nearby car or emergency/armored vehicle                                       |
+| F, 1–4                                               | Interact/fight; select owned fists, pipe, stick or stone                                                             |
+| T                                                    | Nearby resident turns and replies, with bundled Indian-language audio when sound is on                               |
+| Mouse wheel over scene                               | Zoom on the player; movement restores the normal follow distance                                                     |
+| Festival selector                                    | Everyday, Diwali, Ganpati or kites                                                                                   |
+| `bazaar`, `rushhour`, `monsoon`                      | Add bounded population/traffic or cycle weather                                                                      |
+| `LOHAKATHI`, `NAVINMOTAR`, `KAVACHVAN`, `JEEVANBHAR` | Grant a street weapon, park a car/carrier nearby, refill health                                                      |
+| `PANZER`                                             | Spawn an original tracked prop; E enters, Q/R rotate turret, G triggers a visual muzzle flash (no projectile damage) |
+| `CLOTHES`                                            | Cycle an outfit tint while preserving skin/hair                                                                      |
+| `DIWALI`, `GANPATI`, `KITES`, `FESTIVALOFF`          | Set the stylized festival scene                                                                                      |
+| `BLUESKY`, `FOG`, `STORM`, `WIND`, `CALM`            | Set visible atmosphere or wind strength                                                                              |
+| `SMOKE`                                              | Toggle the adult player smoking prop                                                                                 |
+
+Open the cheat box with tilde (~). Unknown words stay in the console without changing the city. Population and visual effects are bounded. Emergency fleets patrol; this is not a full dispatch/arrest/rescue simulation. Character assets remain stylized, the shorter boy model is adapted from an adult pack, and generated street props are illustrative. Read [the complete development checklist](docs/DEVELOPMENT-CHECKLIST.md) for the remaining work.
+
+The Map Channels route was inspected in stationary Street View at Goodluck Chowk and north FC Road. [Reference notes](docs/MAPCHANNELS-REFERENCE.md) record coordinates, image dates and uncertainty. Original arched/ribbon-window material profiles now guide the inspected corridor; they do not establish exact storefront identity or surveyed colors. No Google panorama pixels are shipped as textures.
+
+## Wanted level and progress
+
+Assaults, vehicle theft and collisions with residents raise wanted heat. Police route toward the player; proximity is used for detection. Stay out of police range until search expires, or hold X near an officer for three simulation seconds to surrender and pay a fine up to ₹150. Wallet, selected character, owned street weapons and weather save locally. Active mission, NPC/world state, position and wanted heat are not full-world saves yet. See [the gameplay roadmap](docs/GAMEPLAY-ROADMAP.md) for the remaining GTA-style systems.

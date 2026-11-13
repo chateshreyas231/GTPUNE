@@ -1,0 +1,45 @@
+# GTA-style gameplay roadmap for Pune
+
+This is an original browser-game design inspired by public open-world gameplay conventions. It does not reuse Rockstar source, map, missions, characters or assets. “All GTA V features” is a production-scale target rather than a completed feature claim. The current game is a stylized Pune prototype; its implementation and fidelity must be assessed separately.
+
+## Connected loop implemented in this update
+
+Explore → accept a timed delivery → collect on foot → drive through traffic → deliver for money. Talk to nearby residents, switch among three rigged characters, enter nearby cars and use the street-weapon loadout. Assaults, vehicle theft and hitting pedestrians raise wanted heat. Police route toward the player while wanted; staying out of police sight long enough clears the search. Hold X near an officer for three simulation seconds to surrender, pay up to ₹150 from the wallet and return to Deccan. Wanted level is bounded at five stars. This prototype uses proximity detection and road-graph pursuit, not a full sight/hearing/tactical AI simulation.
+
+Wallet, chosen character, owned street weapons and weather save in local browser storage. Position, active delivery, vehicle condition, NPC state and wanted heat do not yet persist across reloads. A full world-state save remains open.
+
+## Systems comparison and next implementation units
+
+| System / typical open-world rule | Current Pune implementation                                                                                  | Remaining work                                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Walk, run, jump, look, zoom      | Rigged player, movement, jump, mouse look, camera modes and zoom that resets on movement                     | Vaulting, climbing, cover, crouch, stamina, animation transitions                                                    |
+| Character switching              | Three CC0 player looks with preserved controls                                                               | Independent character stories, skills, saved locations and contextual transitions                                    |
+| Health and damage                | Health display, knockdowns, melee hits, health cheat; vehicle impacts cannot kill the player                 | Armor, damage balancing, hospital/respawn loop, non-melee weapon damage                                              |
+| Fist combat / weapons            | Fists, pipe, stick, stone; slots1–4, pickups and cheat                                                       | Firearms, ammo, reloads, aim/cover, throwable trajectories and fair AI combat                                        |
+| Police / wanted                  | Five-star cap, proximity detection, road-based pursuit, searching and surrender/fine                         | Line-of-sight/hearing, last-known-position tactics, roadblocks, escalation units, arrest animation and station scene |
+| Civilian reactions               | Talk/reply, walking, waiting, knockdowns, crowd incidents                                                    | Fear, flight, witnesses/report delays, schedules, relationships and persistent memory                                |
+| Vehicle entry                    | Cars, emergency cars and armor use the same takeover registry                                                | Entry/exit animations, locked doors, owner reactions, garages and ownership                                          |
+| Traffic rules                    | Connected road routing, left-lane offsets, collisions/queues and incidents                                   | Traffic lights, lane changing, parking, right of way, driver aggression and robust deadlock recovery                 |
+| Vehicle dynamics                 | Steer/brake/reverse, wheels, horns, exhaust and synthesized tones                                            | Suspension, tire grip, surface response, traction, durable damage, repairs and fuel                                  |
+| Emergency services               | Police, ambulance and fire fleets, officers, beacons/sirens                                                  | Actual dispatch, ambulance rescue, fire simulation and extinguisher gameplay                                         |
+| Panzer                           | Original tracked prop, entry, turret rotation and visual muzzle flash                                        | Projectile gameplay, damage/terrain interactions and balancing; current flash does no projectile damage              |
+| Missions                         | Timed delivery with pickup, completion reward and failure                                                    | Mission director, checkpoints, branching dialogue, chase/rescue/race/heist mission chains                            |
+| Economy                          | Delivery cash, local wallet, surrender fine                                                                  | Shops, inventory purchases, rewards balancing, property, jobs, garages and upgrades                                  |
+| Save/load                        | Versioned local wallet/look/loadout/weather save with validation                                             | World snapshots, resume active missions, export/import, migrations and recovery UI                                   |
+| Map / navigation                 | Actual OSM roads, expanded map, layers, pan/zoom/recenter and markers                                        | Turn-by-turn route assistance, map legend for all services and accessible navigation                                 |
+| World realism                    | Real OSM footprints; tags preserved; inferred heights/materials; inspected FC Road corridor style references | Exact facade-to-footprint matching, surveyed colors, terrain, interiors and high-quality local assets                |
+| Weather / time / nature          | Clear/rain/fog/storm, blue hour, blue sky, clouds, birds, wind and litter                                    | Dynamic time/calendar, wet-surface handling, tree/cloth physics and wildlife behaviors                               |
+| Local culture                    | Marathi/Hindi/Indian-English neural lines, food stalls, vendors, Diwali/Ganpati/kite modes                   | Original Pune actors, diverse character models, researched regional detail and festival activities                   |
+| City events                      | Stalled car, tea-stall crowd, broken scooter and construction props                                          | Respondable events, recovery mechanics, consequence chains and more varied event schedules                           |
+| Activities                       | Free roam, deliveries, cheats and photo mode                                                                 | Races, taxi/passenger jobs, side stories, sports and exploration rewards                                             |
+| Accessibility / settings         | Control help, sound/language settings and basic touch direction buttons                                      | Remapping, gamepad, scalable UI, contrast/subtitles, accessible menus and full touch controls                        |
+| Performance / streaming          | Nearby scenery batches and bounded effects/population                                                        | Spatial acceleration of collision/AI, adaptive quality UI, asset LOD and memory budgets                              |
+| Online / sharing                 | 4K PNG export                                                                                                | Multiplayer, synchronization, moderation and server architecture are separate projects                               |
+| Other traversal                  | Roads and foot traversal                                                                                     | Boats, swimming, aircraft, trains and their environments/assets                                                      |
+
+## Limits that must remain explicit
+
+- No claim of Rockstar production quality, a photographic digital twin, realistic anatomical children, or completion of every city edge case.
+- Street View was inspected at stationary Goodluck/FC Road panoramas; corridor material profiles are original drawn approximations. Exact named facades remain unverified. See MAPCHANNELS-REFERENCE.md.
+- Full exact-building work needs reference correspondence and purpose-made/appropriately licensed models. Resolution alone does not create those details.
+- New mechanics need meaningful integration checks before being marked complete. Do not count a branch, a helper function, a screenshot title, or a started agent as proof of finished gameplay.

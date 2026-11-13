@@ -152,6 +152,8 @@ function paintLook(model, look) {
     const painted = source.map((material) => {
       const next = material.clone();
       const hex = look.materials?.[next.name];
+      next.userData.puneClothing =
+        hex != null && !/skin|hair|eye|brown|grey/i.test(next.name);
       if (hex != null) next.color.setHex(hex);
       next.metalness = 0.02;
       next.roughness = 0.82;

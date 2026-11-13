@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 
-test("tilde cheats change population, traffic, and weather", async ({ page }) => {
+test("tilde cheats change population, traffic, and weather", async ({
+  page,
+}) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/data/pune-osm.json", (route) =>
@@ -37,29 +39,52 @@ test("tilde cheats change population, traffic, and weather", async ({ page }) =>
   await page.keyboard.type("monsoon");
   await page.keyboard.press("Enter");
   await expect(page.locator("#lighting")).toHaveText("MONSOON");
-  expect((await page.evaluate(() => window.__pune.state)).weather).toBe("monsoon");
-  const stalled = await page.evaluate(() => window.__pune.debug.incident("stalled-vehicle"));
-  const crowd = await page.evaluate(() => window.__pune.debug.incident("stall-crowd"));
-  const breakdown = await page.evaluate(() => window.__pune.debug.incident("roadside-breakdown"));
+  expect((await page.evaluate(() => window.__pune.state)).weather).toBe(
+    "monsoon",
+  );
+  const stalled = await page.evaluate(() =>
+    window.__pune.debug.incident("stalled-vehicle"),
+  );
+  const crowd = await page.evaluate(() =>
+    window.__pune.debug.incident("stall-crowd"),
+  );
+  const breakdown = await page.evaluate(() =>
+    window.__pune.debug.incident("roadside-breakdown"),
+  );
   expect([stalled, crowd, breakdown]).toEqual([
     "stalled-vehicle",
     "stall-crowd",
     "roadside-breakdown",
   ]);
   const life = await page.evaluate(() => window.__pune.state.incidents);
-  expect(life.find((item) => item.id === "stalled-vehicle").vehicles).toEqual(["car"]);
-  expect(life.find((item) => item.id === "stall-crowd").people).toBe(6);
-  expect(life.find((item) => item.id === "roadside-breakdown").vehicles).toEqual([
-    "motorcycle",
+  expect(life.find((item) => item.id === "stalled-vehicle").vehicles).toEqual([
+    "car",
   ]);
-  await page.evaluate(() => window.__pune.debug.focusIncident("stalled-vehicle"));
+  expect(life.find((item) => item.id === "stall-crowd").people).toBe(6);
+  expect(
+    life.find((item) => item.id === "roadside-breakdown").vehicles,
+  ).toEqual(["motorcycle"]);
+  await page.evaluate(() =>
+    window.__pune.debug.focusIncident("stalled-vehicle"),
+  );
   await page.waitForTimeout(900);
   await page.screenshot({ path: "test-results/cheat-stalled.png" });
   await page.evaluate(() => window.__pune.debug.focusIncident("stall-crowd"));
   await page.waitForTimeout(700);
   await page.screenshot({ path: "test-results/cheat-crowd.png" });
-  await page.evaluate(() => window.__pune.debug.focusIncident("roadside-breakdown"));
+  await page.evaluate(() =>
+    window.__pune.debug.focusIncident("roadside-breakdown"),
+  );
   await page.waitForTimeout(700);
   await page.screenshot({ path: "test-results/cheat-breakdown.png" });
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("pune-progress-v1")),
+  );
+  expect(saved.weather).toBe("monsoon");
+  await page.reload();
+  await page.waitForFunction(() => window.__pune);
+  expect((await page.evaluate(() => window.__pune.state)).weather).toBe(
+    "monsoon",
+  );
   expect(errors).toEqual([]);
 });

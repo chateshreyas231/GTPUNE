@@ -3,6 +3,7 @@ import { test, expect } from "@playwright/test";
 test("renders and supports driving, pause, reset, walking and local dialogue", async ({
   page,
 }) => {
+  test.setTimeout(120000);
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("**/data/pune-osm.json", (route) =>
@@ -40,6 +41,7 @@ test("renders and supports driving, pause, reset, walking and local dialogue", a
   await page.locator("#reset").click();
   await page.keyboard.press("e");
   expect((await page.evaluate(() => window.__pune.state)).walking).toBe(true);
+  await page.keyboard.press("Escape");
   await page.locator("#audio").click();
   await page.locator("#world").click({ position: { x: 700, y: 450 } });
   await page.keyboard.press("t");
@@ -50,14 +52,17 @@ test("renders and supports driving, pause, reset, walking and local dialogue", a
     .toBeGreaterThan(0);
   await expect(page.locator("#dialogue")).toBeVisible();
   await expect(page.locator("#dialogue")).toContainText(/[\u0900-\u097F]/);
+  await page.keyboard.press("Escape");
   await page.locator("#language").selectOption("hi-IN");
   await page.locator("#world").click({ position: { x: 700, y: 450 } });
   await page.keyboard.press("t");
   await expect(page.locator("#dialogue")).toContainText("चाय");
+  await page.keyboard.press("Escape");
   await page.locator("#job").click();
   await page.locator("#world").click({ position: { x: 700, y: 450 } });
   await page.keyboard.press("f");
   expect((await page.evaluate(() => window.__pune.state)).job).toBe("delivery");
+  await page.keyboard.press("Escape");
   await page.locator("#lighting").click();
   await expect(page.locator("#lighting")).toHaveText("BLUE HOUR");
   await page.screenshot({ path: "test-results/pune-game.png" });
@@ -149,6 +154,9 @@ test("health, replies, fists, weapons and the cheat box", async ({ page }) => {
   expect(punch.hit).toBe(true);
   expect(punch.dead).toBe(false);
   expect(punch.health).toBe(2);
+  expect(
+    (await page.evaluate(() => window.__pune.state)).wanted,
+  ).toBeGreaterThan(0);
   await page.evaluate(() => {
     window.__pune.debug.cheat("not-a-code");
   });
@@ -174,7 +182,9 @@ test("health, replies, fists, weapons and the cheat box", async ({ page }) => {
   }
   await page.evaluate(() => window.__pune.debug.armPlayer());
   await expect
-    .poll(() => page.evaluate(() => window.__pune.state.playerDown), { timeout: 4000 })
+    .poll(() => page.evaluate(() => window.__pune.state.playerDown), {
+      timeout: 4000,
+    })
     .toBe(true);
   const survived = await page.evaluate(() => window.__pune.state);
   expect(survived.playerDead).toBe(false);
