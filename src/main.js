@@ -1216,6 +1216,7 @@ let loadout = savedProgress
   : emptyLoadout();
 let heldMesh = null;
 let attack = 0;
+let lastAttack = null;
 const fist = new THREE.Mesh(
   new THREE.SphereGeometry(0.07, 8, 8),
   new THREE.MeshStandardMaterial({ color: 0xd6b08a, roughness: 0.65 }),
@@ -2054,11 +2055,23 @@ function takeOrSwing() {
     );
     return;
   }
-  swingWeapon();
+  toast("No weapon pickup nearby. F attacks; G interacts.");
 }
 function swingWeapon() {
-  attack = 1;
+  if (!walking) {
+    toast("Press E to leave the vehicle before fighting.");
+    return false;
+  }
+  if (playerLife.down || playerLife.dead) {
+    toast("Wait until you are standing before attacking.");
+    return false;
+  }
   const weapon = selectedWeapon(loadout);
+  if (avatar.userData.attack && !avatar.userData.attack(weapon.id))
+    return false;
+  avatar.rotation.y = lookYaw;
+  attack = 1;
+  lastAttack = { weapon: weapon.id, hit: false, target: null };
   const fx = -Math.sin(avatar.rotation.y);
   const fz = -Math.cos(avatar.rotation.y);
   for (const ped of pedestrians) {
@@ -2083,6 +2096,11 @@ function swingWeapon() {
       hit,
     );
     settlePerson(ped, next, elapsed);
+    lastAttack = {
+      weapon: weapon.id,
+      hit: next.changed,
+      target: ped.mesh.userData.name,
+    };
     law = reportCrime(law, "assault");
     toast(
       next.dead
@@ -2207,7 +2225,7 @@ function startJob() {
   }
   job = createDelivery(city.spawn, city.stops[0].point);
   $("job").textContent = "DABBA RUN ACTIVE";
-  toast("Stop near Deccan, get out with E, then press F to collect the dabba.");
+  toast("Stop near Deccan, get out with E, then press G to collect the dabba.");
 }
 function interactJob() {
   if (!job) return;
@@ -2217,7 +2235,7 @@ function interactJob() {
     walking,
   );
   if (result.job.phase === job.phase) {
-    toast("Get out and press F within 14 metres of the delivery marker.");
+    toast("Get out and press G within 14 metres of the delivery marker.");
     return;
   }
   job = result.job;
@@ -2740,12 +2758,12 @@ function action(key) {
     switchLook();
     persistProgress();
   }
-  if (key === "g" && player.userData.tank && !walking)
-    firePanzer(player, elapsed);
-  if (key === "f") {
-    if (job && ["pickup", "delivery"].includes(job.phase)) interactJob();
+  if (key === "g") {
+    if (!walking && player.userData.tank) firePanzer(player, elapsed);
+    else if (job && ["pickup", "delivery"].includes(job.phase)) interactJob();
     else takeOrSwing();
   }
+  if (key === "f") swingWeapon();
   if (key >= "1" && key <= "4") chooseSlot(Number(key));
   if (key === "j") startJob();
   if (key === "c") {
@@ -3638,7 +3656,7 @@ function animate() {
       $("distance").textContent =
         `${Math.round(Math.hypot(p.x - point[0], p.z - point[1]))} m`;
       $("job-status").textContent =
-        `${Math.ceil(job.remaining)}s · ${job.phase === "pickup" ? "On foot + F to collect" : "On foot + F to deliver"} · Wallet ₹${wallet}`;
+        `${Math.ceil(job.remaining)}s · ${job.phase === "pickup" ? "On foot + G to collect" : "On foot + G to deliver"} · Wallet ₹${wallet}`;
       if (job.phase === "failed") {
         $("job").textContent = "RETRY DABBA RUN";
         toast("Delivery timed out. Start again when ready.");
@@ -3666,7 +3684,7 @@ function animate() {
           $("distance").textContent =
             `${Math.round(Math.hypot(p.x - point[0], p.z - point[1]))} m`;
           $("job-status").textContent =
-            `${Math.ceil(job.remaining)}s · ${job.phase === "pickup" ? "On foot + F to collect" : "On foot + F to deliver"} · Wallet ₹${wallet}`;
+            `${Math.ceil(job.remaining)}s · ${job.phase === "pickup" ? "On foot + G to collect" : "On foot + G to deliver"} · Wallet ₹${wallet}`;
           if (job.phase === "failed") {
             $("job").textContent = "RETRY DABBA RUN";
             toast("Delivery timed out. Start again when ready.");
@@ -3893,6 +3911,8 @@ window.__pune = {
       playerDown: playerLife.down,
       playerDead: playerLife.dead,
       playerHealth: playerLife.health,
+      attackClip: avatar.userData.attackClip || null,
+      lastAttack,
       wanted: law.stars,
       searchTime: law.search,
       look: lookId,
@@ -3991,9 +4011,11 @@ window.__pune = {
       );
       return ped
         ? {
+            x: ped.x,
+            z: ped.z,
             down: ped.down,
             dead: ped.dead,
-            health: ped.health,
+            health: ped.health ?? 3,
             y: ped.mesh.position.y,
             rotationX: ped.mesh.rotation.x,
           }
@@ -4048,6 +4070,7 @@ window.__pune = {
         .getSize(new THREE.Vector3());
       return {
         skinned,
+        attackClip: avatar.userData.attackClip || null,
         paints,
         height: size.y,
         look: lookId,
@@ -4093,6 +4116,7 @@ window.__pune = {
       };
     },
     swingFront() {
+      avatar.rotation.y = lookYaw;
       const ped = pedestrians.find((person) => !person.down);
       const fx = -Math.sin(avatar.rotation.y);
       const fz = -Math.cos(avatar.rotation.y);

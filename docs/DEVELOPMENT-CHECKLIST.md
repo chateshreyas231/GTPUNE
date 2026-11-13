@@ -130,3 +130,7 @@ No runtime tests were run by the feature auditor. The checklist records source i
 - A final visual check caught the legacy cream sky dome being inadvertently retained by static batching. It was removed from rendering and hidden meshes are now excluded from batching; the atmosphere scene was rechecked separately after that fix (1 additional browser test passed).
 
 These results demonstrate this integrated prototype, not production-quality photorealism, all GTA V features, a complete city simulation or exact surveyed facades. Remaining partial/open rows stay on this checklist and the gameplay roadmap.
+
+## Combat-input follow-up
+
+F is now dedicated to attacks and uses camera aim with the rigged Punch_Left/Punch_Right/Sword_Slash clips. G handles pickups and active deliveries. This fixes mission/pickup interception and a stationary character facing away from camera aim. Validation: 100 unit/server tests and 3 focused Chromium checks passed, including a real F keypress encounter during an active delivery (no direct-damage test helper).

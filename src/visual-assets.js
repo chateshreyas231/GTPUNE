@@ -222,7 +222,17 @@ export function applyLook(root, id) {
   const mixer = new THREE.AnimationMixer(fitted);
   const actions = {};
   for (const clip of gltf.animations) {
-    if (!["Idle", "Walk", "Run"].includes(clip.name)) continue;
+    if (
+      ![
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash",
+      ].includes(clip.name)
+    )
+      continue;
     const action = mixer.clipAction(clip, fitted);
     action.enabled = true;
     actions[clip.name] = action;
@@ -236,7 +246,40 @@ export function applyLook(root, id) {
   root.userData.name = look.name;
   root.userData.height = look.height;
   root.userData.detailedHuman = true;
+  let attackRemaining = 0,
+    combatAction = null,
+    punchSide = 0;
+  root.userData.attackClip = "";
+  root.userData.attack = (weapon = "fists") => {
+    if (attackRemaining > 0) return false;
+    const name =
+      weapon === "fists"
+        ? punchSide++ % 2
+          ? "Punch_Left"
+          : "Punch_Right"
+        : "Sword_Slash";
+    const action = actions[name];
+    if (!action) return true;
+    for (const other of Object.values(actions))
+      if (other !== action) other.fadeOut(0.06);
+    action.reset().setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.timeScale = 1.25;
+    action.fadeIn(0.04).play();
+    combatAction = action;
+    attackRemaining = action.getClip().duration / action.timeScale;
+    root.userData.attackClip = name;
+    return true;
+  };
   root.userData.walk = (dt = 0, speed = 0) => {
+    if (attackRemaining > 0) {
+      attackRemaining = Math.max(0, attackRemaining - Math.max(0, dt));
+      mixer.update(Math.max(0, dt));
+      if (attackRemaining > 0) return;
+      combatAction?.fadeOut(0.08);
+      root.userData.attackClip = "";
+      root.userData.clip = "";
+    }
     const meters = Math.abs(Number(speed) || 0);
     const clip =
       meters > 3.2 && actions.Run

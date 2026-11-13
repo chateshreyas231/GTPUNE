@@ -24,12 +24,13 @@ PORT=3001 npm start
 - Esc: release the mouse pointer while walking so you can use the HUD controls.
 - H: horn; enable sound with the SOUND button first.
 - T: talk to a pedestrian within 22 m. They turn toward you and reply. Select Marathi, Hindi or English.
-- F: punch with fists, or swing the selected street weapon. Keys 1–4 switch fists, pipe, stick, and stone. A pipe, stick, and stone lie on the pavement near the start. A cheat can also hand you the next street weapon.
+- F: always punch with fists or swing the selected street weapon, including during deliveries. Aim by looking toward your target.
+- G: pick up nearby weapons or collect/deliver the dabba; in the PANZER, trigger the visual muzzle flash. Keys 1–4 switch fists, pipe, stick, and stone. A pipe, stick, and stone lie on the pavement near the start. A cheat can also hand you the next street weapon.
 - Health is shown on the dashboard. A vehicle can knock you down. It cannot kill you.
 - Tilde (~) opens a cheat box. The words are original to this game: `LOHAKATHI` gives a street weapon, `KAVACHVAN` parks an original armored carrier beside you, `NAVINMOTAR` parks a car beside you, and `JEEVANBHAR` refills health. On foot, E enters a nearby vehicle.
 - ~ : cheat line. `bazaar` adds pedestrians, `rushhour` adds traffic, and `monsoon` cycles the weather (drizzle, monsoon rain, blue hour, clear).
 - While you play, the city can stall a car in the lane, gather a small crowd at a tea stall, or leave a scooter broken down at the side of the road.
-- J / START DABBA DELIVERY: begin a timed ₹450 delivery. Stop at the marker, get out and press F to collect; repeat at FC Road to deliver. Completion saves the wallet locally.
+- J / START DABBA DELIVERY: begin a timed ₹450 delivery. Stop at the marker, get out and press G to collect; press G again at FC Road to deliver. Completion saves the wallet locally.
 - 4K PHOTO: export a 3840 × 2160 scene PNG; normal rendering remains sized for your screen.
 - P: pause. The game also pauses on a hidden tab.
 - Follow the three amber markers to complete the evening run. Return to Deccan resets your vehicle position.
@@ -82,7 +83,7 @@ The combined main build retains the original history and integrates the separate
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | V                                                    | Cycle the three rigged player characters                                                                             |
 | E                                                    | Exit to a clear pavement spot; enter a nearby car or emergency/armored vehicle                                       |
-| F, 1–4                                               | Interact/fight; select owned fists, pipe, stick or stone                                                             |
+| F, 1–4                                               | Fight; select owned fists, pipe, stick or stone                                                                      |
 | T                                                    | Nearby resident turns and replies, with bundled Indian-language audio when sound is on                               |
 | Mouse wheel over scene                               | Zoom on the player; movement restores the normal follow distance                                                     |
 | Festival selector                                    | Everyday, Diwali, Ganpati or kites                                                                                   |
@@ -97,6 +98,10 @@ The combined main build retains the original history and integrates the separate
 Open the cheat box with tilde (~). Unknown words stay in the console without changing the city. Population and visual effects are bounded. Emergency fleets patrol; this is not a full dispatch/arrest/rescue simulation. Character assets remain stylized, the shorter boy model is adapted from an adult pack, and generated street props are illustrative. Read [the complete development checklist](docs/DEVELOPMENT-CHECKLIST.md) for the remaining work.
 
 The Map Channels route was inspected in stationary Street View at Goodluck Chowk and north FC Road. [Reference notes](docs/MAPCHANNELS-REFERENCE.md) record coordinates, image dates and uncertainty. Original arched/ribbon-window material profiles now guide the inspected corridor; they do not establish exact storefront identity or surveyed colors. No Google panorama pixels are shipped as textures.
+
+## Combat input correction
+
+F is always attack while on foot: aim the camera toward a nearby resident, then press F. The character turns to that direction and plays its rigged punch or swing animation. F never picks up a weapon or gets consumed by a delivery. G is now the interaction key for nearby weapon pickups and delivery collection/drop-off; in the PANZER it remains the visual cannon flash. Fast repeated attacks wait for the current animation to finish. Press E to exit a vehicle before fighting.
 
 ## Wanted level and progress
 

@@ -60,7 +60,7 @@ test("renders and supports driving, pause, reset, walking and local dialogue", a
   await page.keyboard.press("Escape");
   await page.locator("#job").click();
   await page.locator("#world").click({ position: { x: 700, y: 450 } });
-  await page.keyboard.press("f");
+  await page.keyboard.press("g");
   expect((await page.evaluate(() => window.__pune.state)).job).toBe("delivery");
   await page.keyboard.press("Escape");
   await page.locator("#lighting").click();
