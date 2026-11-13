@@ -82,7 +82,9 @@ export function parseOSM(data) {
       roads.push({
         points,
         width: ["primary", "trunk"].includes(e.tags.highway) ? 20 : 12,
-        name: e.tags.name,
+        name: e.tags.name || "",
+        altName: e.tags.alt_name || "",
+        highway: e.tags.highway,
       });
     if (e.tags.building && points.length >= 4)
       buildings.push({
@@ -97,6 +99,11 @@ export function parseOSM(data) {
           ),
         ),
         color: (e.id % 100) / 100,
+        id: e.id,
+        name: e.tags.name || "",
+        kind: e.tags.building,
+        shop: e.tags.shop || "",
+        amenity: e.tags.amenity || "",
       });
   }
   if (!roads.length) throw Error("Map contains no driveable roads");
@@ -203,69 +210,30 @@ export function makeCar(color = 0xeee6cc, rickshaw = false) {
     }
   return g;
 }
-export function person(index) {
-  const g = new THREE.Group(),
-    skin = [0x8a553b, 0xb67b50, 0x754b38, 0xcc996b][index % 4],
-    shirt = [0xe9ac52, 0x8aaea6, 0xb66c65, 0xeff0d7, 0x816c9a][index % 5];
-  const mat = (c) =>
-    new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
-  const add = (geo, c, x, y, z, parent = g) => {
-    const m = new THREE.Mesh(geo, mat(c));
-    m.position.set(x, y, z);
-    m.castShadow = true;
-    parent.add(m);
-    return m;
-  };
-  add(new THREE.SphereGeometry(0.19, 16, 12), skin, 0, 1.65, 0).scale.set(
-    0.86,
-    1.12,
-    0.9,
-  );
-  add(
-    new THREE.SphereGeometry(0.195, 12, 8),
-    0x242322,
-    0,
-    1.76,
-    0.015,
-  ).scale.set(0.92, 0.55, 0.97);
-  add(new THREE.CylinderGeometry(0.085, 0.09, 0.12, 8), skin, 0, 1.43, 0);
-  add(
-    new THREE.CylinderGeometry(0.23, 0.19, 0.58, 12),
-    shirt,
-    0,
-    1.1,
-    0,
-  ).scale.z = 0.65;
-  for (const x of [-0.065, 0.065]) {
-    add(new THREE.SphereGeometry(0.025, 8, 6), 0xe6dac8, x, 1.68, -0.16);
-    add(new THREE.SphereGeometry(0.012, 6, 6), 0x242424, x, 1.68, -0.181);
-  }
-  add(new THREE.SphereGeometry(0.035, 8, 6), skin, 0, 1.61, -0.18);
-  const legs = [],
-    arms = [];
-  for (const side of [-1, 1]) {
-    const leg = new THREE.Group();
-    leg.position.set(side * 0.11, 0.83, 0);
-    g.add(leg);
-    legs.push(leg);
-    add(new THREE.CapsuleGeometry(0.09, 0.48, 4, 8), 0x344848, 0, -0.3, 0, leg);
-    add(new THREE.BoxGeometry(0.17, 0.13, 0.3), 0x262823, 0, -0.7, -0.05, leg);
-    const arm = new THREE.Group();
-    arm.position.set(side * 0.25, 1.34, 0);
-    g.add(arm);
-    arms.push(arm);
-    add(new THREE.CapsuleGeometry(0.065, 0.4, 4, 8), skin, 0, -0.25, 0, arm);
-    add(new THREE.SphereGeometry(0.075, 8, 6), skin, 0, -0.53, 0, arm);
-  }
-  g.userData.walk = (time, amount = 1) => {
-    legs.forEach(
-      (p, i) =>
-        (p.rotation.x = Math.sin(time * 6 + i * Math.PI) * 0.45 * amount),
-    );
-    arms.forEach(
-      (p, i) =>
-        (p.rotation.x = -Math.sin(time * 6 + i * Math.PI) * 0.35 * amount),
-    );
-  };
-  return g;
-}
+
+export {
+  roadTitle,
+  roadUnder,
+  PLASTER,
+  GLASS_PLASTER,
+  buildingLook,
+  SHOP_BOARDS,
+  frontageName,
+  isShopFront,
+  mapPlaces,
+  nodeKey,
+  roadAdjacency,
+  chooseGoal,
+  planTrip,
+  rollVehicle,
+  VEHICLE_CYCLE,
+  vehicleSpec,
+  mulberry32,
+  makeAuto,
+  makeBus,
+  makeBike,
+  makeVehicle,
+  RESIDENTS,
+  residentProfile,
+  person,
+} from "./city-life.js";

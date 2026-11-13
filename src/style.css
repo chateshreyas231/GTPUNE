@@ -94,6 +94,15 @@ header {
   letter-spacing: 1px;
   color: #b7c1b7;
 }
+#district {
+  letter-spacing: 0.3px;
+  font-size: 13px;
+}
+#nearby {
+  letter-spacing: 0;
+  color: #f3e2b0;
+  min-height: 1.2em;
+}
 header button {
   background: #ffffff0c;
   border: 1px solid #ffffff35;
@@ -302,6 +311,11 @@ footer {
   flex: 1;
   height: auto;
   min-height: 240px;
+  cursor: grab;
+  touch-action: none;
+}
+.map-panel.is-max #map.is-panning {
+  cursor: grabbing;
 }
 .map-options,
 .map-legend {
@@ -331,6 +345,16 @@ footer {
 }
 .map-legend .car {
   background: #f4f7f2;
+}
+.map-legend .auto {
+  background: #f0c31a;
+}
+.map-legend .bus {
+  background: #d24b58;
+}
+.map-legend .bike {
+  background: #49b6d6;
+  border-radius: 50%;
 }
 .map-legend .person {
   background: #7dcea0;
@@ -653,3 +677,21 @@ dialog .disclosure {
 #photo {
   color: #edbd6d;
 }
+
+.map-panel.is-max {
+  z-index: 40;
+  user-select: none;
+}
+@media (max-width: 800px), (max-height: 700px) {
+  .map-panel.is-max {
+    left: 12px;
+    top: 64px;
+    bottom: 12px;
+    width: min(760px, calc(100vw - 24px));
+  }
+  .map-panel.is-max #map {
+    height: auto;
+    min-height: 180px;
+  }
+}
+
