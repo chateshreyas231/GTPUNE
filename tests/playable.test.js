@@ -7,6 +7,7 @@ import {
   project,
   person,
   orbitLook,
+  footLookActive,
   footPace,
   beginJump,
   WALK_SPEED,
@@ -62,6 +63,11 @@ test("mouse look orbits, shift runs, and space jumps", () => {
   const looked = orbitLook(0.2, 0.3, 20, -10);
   assert.ok(looked.yaw < 0.2);
   assert.ok(looked.pitch > 0.3);
+  assert.equal(footLookActive({ walking: true }), true);
+  assert.equal(footLookActive({ walking: false }), false);
+  assert.equal(footLookActive({ walking: true, overMap: true }), false);
+  assert.equal(footLookActive({ walking: true, draggingMap: true }), false);
+  assert.equal(footLookActive({ walking: true, paused: true }), false);
   assert.equal(footPace(false), WALK_SPEED);
   assert.ok(footPace(true) > footPace(false));
   assert.equal(RUN_SPEED, footPace(true));

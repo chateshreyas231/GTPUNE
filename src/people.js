@@ -35,7 +35,13 @@ export function beginJump({ queued, y, vy }) {
   return { vy, queued, jumped: false };
 }
 
-// Drag on the world orbits the camera. The same numbers drive the playable view.
+// On foot, mouse movement looks around without a held button.
+// The expanded map and a paused game do not turn the player.
+export function footLookActive({ walking, paused, overMap, draggingMap } = {}) {
+  return walking === true && paused !== true && overMap !== true && draggingMap !== true;
+}
+
+// Mouse movement orbits the third-person camera. The same numbers drive the playable view.
 export function orbitLook(yaw, pitch, dx, dy) {
   return {
     yaw: yaw - dx * 0.005,

@@ -30,6 +30,7 @@ import {
   distanceGain,
   BODY_LABELS,
   orbitLook,
+  footLookActive,
   footPace,
   beginJump,
 } from "./city.js";
@@ -847,7 +848,6 @@ let lookPitch = 0.28;
 let vy = 0;
 let jumpQueued = false;
 const playerLife = { health: 3, down: false, dead: false, downUntil: null };
-let lookDrag = null;
 let previousTime = performance.now();
 let audioContext, toastTimer;
 const toneNodes = new Map();
@@ -1034,9 +1034,11 @@ function toggleWalk() {
   speed = 0;
   toast(
     walking
-      ? "On foot. Drag to look, Shift runs, Space jumps."
+      ? "On foot. Move the mouse to look. Shift runs, Space jumps. Esc releases the pointer."
       : "Back behind the wheel. Space brakes.",
   );
+  if (walking) engageLook();
+  else releaseLook();
 }
 function collides(x, z, r = 1.4) {
   for (const b of obstacles) {
@@ -1239,26 +1241,47 @@ $("play").onclick = () => {
   document.body.classList.add("playing");
   $("play").blur();
   $("world").focus();
-  toast("WASD drives · drag to look · E walks · Shift runs · Space jumps");
+  toast("WASD drives · mouse looks on foot · E walks · Shift runs · Space jumps");
 };
-function endLook(event) {
-  if (!lookDrag || (event && event.pointerId !== lookDrag)) return;
-  lookDrag = null;
+function releaseLook() {
+  if (document.pointerLockElement) document.exitPointerLock();
 }
-$("world").addEventListener("pointerdown", (event) => {
-  if (!active || paused || event.button !== 0) return;
-  $("world").focus();
-  $("world").setPointerCapture(event.pointerId);
-  lookDrag = event.pointerId;
-});
-$("world").addEventListener("pointermove", (event) => {
-  if (lookDrag !== event.pointerId || !active || paused) return;
+function engageLook() {
+  if (!walking || paused || !active || mapView.size === "max") return;
+  const canvas = $("world");
+  if (document.pointerLockElement === canvas) return;
+  const pending = canvas.requestPointerLock?.();
+  if (pending && typeof pending.catch === "function") pending.catch(() => {});
+}
+window.addEventListener("mousemove", (event) => {
+  const overMap =
+    mapView.pointerOver === true ||
+    Boolean(event.target?.closest?.("#map-panel"));
+  if (
+    !active ||
+    !footLookActive({
+      walking,
+      paused,
+      overMap,
+      draggingMap: mapDrag !== null,
+    })
+  )
+    return;
+  if (!event.movementX && !event.movementY) return;
   const next = orbitLook(lookYaw, lookPitch, event.movementX, event.movementY);
   lookYaw = next.yaw;
   lookPitch = next.pitch;
 });
-$("world").addEventListener("pointerup", endLook);
-$("world").addEventListener("pointercancel", endLook);
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  releaseLook();
+}, true);
+$("world").addEventListener("pointerdown", (event) => {
+  if (!active || paused || event.button !== 0) return;
+  if (event.target?.closest?.("#map-panel")) return;
+  $("world").focus();
+  if (walking) engageLook();
+});
 $("audio").onclick = enableSound;
 $("photo").onclick = () => {
   const oldPixelRatio = renderer.getPixelRatio(),
@@ -1453,6 +1476,8 @@ $("map-size").onclick = () => {
   toggleExpand(mapView);
   applyMapSize();
   saveMap();
+  if (mapView.size === "max") releaseLook();
+  else if (walking) engageLook();
 };
 $("map-min").onclick = () => {
   toggleMin(mapView);
@@ -1955,7 +1980,7 @@ function animate() {
   const p = actor().position;
   if (Math.hypot(p.x - buildingCenter.x, p.z - buildingCenter.y) > 300)
     renderBuildings(p.x, p.z);
-  if (active && (walking || lookDrag)) {
+  if (active && walking) {
     const back = view === 1 ? 2.6 : view === 2 ? 16 : walking ? 4.4 : 8;
     const orbit = view === 2 ? 0.9 : lookPitch;
     const cosP = Math.cos(orbit);

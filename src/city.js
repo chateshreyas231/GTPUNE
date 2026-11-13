@@ -565,6 +565,7 @@ export {
   residentProfile,
   RESIDENTS,
   orbitLook,
+  footLookActive,
   footPace,
   beginJump,
   WALK_SPEED,
