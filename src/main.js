@@ -2,6 +2,7 @@ import { createDelivery, tickDelivery, interactDelivery } from "./delivery.js";
 import { streetDetails, swayCanopies, laneMarking } from "./street-details.js";
 import { loadSurfacePhotos, hydrateResidents } from "./visual-assets.js";
 import { lines } from "./dialogue.js";
+import { CINEMATIC, createCinematicComposer, thirdPersonRig } from "./cinematic.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
@@ -102,7 +103,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.96;
 const camera = new THREE.PerspectiveCamera(
-  64,
+  CINEMATIC.fov,
   innerWidth / innerHeight,
   0.2,
   6000,
@@ -138,46 +139,8 @@ const sky = new THREE.Mesh(
 );
 sky.frustumCulled = false;
 scene.add(sky);
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(innerWidth, innerHeight),
-  0.28,
-  0.42,
-  0.84,
-);
-composer.addPass(bloomPass);
-composer.addPass(
-  new ShaderPass({
-    uniforms: { tDiffuse: { value: null } },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D tDiffuse;
-      varying vec2 vUv;
-      void main() {
-        vec4 color = texture2D(tDiffuse, vUv);
-        float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-        color.rgb = mix(vec3(luma), color.rgb, 0.86);
-        color.rgb = (color.rgb - 0.5) * 0.86 + 0.5;
-        color.rgb += 0.035;
-        color.r *= 1.045;
-        color.b *= 0.94;
-        vec2 q = vUv - 0.5;
-        float vignette = smoothstep(0.92, 0.32, length(q));
-        color.rgb *= mix(0.82, 1.0, vignette);
-        gl_FragColor = color;
-      }
-    `,
-  }),
-);
-composer.addPass(new OutputPass());
-const hemi = new THREE.HemisphereLight(0xe7ecde, 0x676956, 1.85);
+const composer = createCinematicComposer(renderer, scene, camera);
+const hemi = new THREE.HemisphereLight(0xe7ecde, 0x676956, 2.3);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffd59b, 2.5);
 sun.position.set(-170, 240, 80);
@@ -1505,10 +1468,11 @@ $("photo").onclick = () => {
   const aspect = camera.aspect;
   try {
     renderer.setPixelRatio(1);
+    composer.setPixelRatio(1);
     renderer.setSize(3840, 2160, false);
+    composer.setSize(3840, 2160);
     camera.aspect = 3840 / 2160;
     camera.updateProjectionMatrix();
-    composer.setSize(3840, 2160);
     composer.render();
     const link = document.createElement("a");
     link.download = "pune-4k.png";
@@ -1517,6 +1481,7 @@ $("photo").onclick = () => {
     toast("Saved 3840 × 2160 scene photo.");
   } finally {
     renderer.setPixelRatio(oldPixelRatio);
+    composer.setPixelRatio(oldPixelRatio);
     renderer.setSize(size.x, size.y, false);
     composer.setSize(size.x, size.y);
     camera.aspect = aspect;
@@ -2212,26 +2177,25 @@ function animate() {
   if (Math.hypot(p.x - buildingCenter.x, p.z - buildingCenter.y) > 300)
     renderBuildings(p.x, p.z);
   if (active && walking) {
-    const back = view === 1 ? 3.6 : view === 2 ? 20 : 6.4;
-    const orbit = view === 2 ? 0.9 : lookPitch;
+    const rig = thirdPersonRig({ walking: true, view });
+    const orbit = rig.overhead ? 0.9 : lookPitch;
     const cosP = Math.cos(orbit);
     desiredCamera.set(
-      p.x + Math.sin(lookYaw) * back * cosP,
-      p.y + (walking ? 1.45 : 1.6) + Math.sin(orbit) * back,
-      p.z + Math.cos(lookYaw) * back * cosP,
+      p.x + Math.sin(lookYaw) * rig.back * cosP,
+      p.y + 1.45 + Math.sin(orbit) * rig.back,
+      p.z + Math.cos(lookYaw) * rig.back * cosP,
     );
     look.set(
       p.x - Math.sin(lookYaw) * 2.2,
-      p.y + (walking ? 1.35 : 1.1),
+      p.y + 1.35,
       p.z - Math.cos(lookYaw) * 2.2,
     );
   } else if (active) {
-    const back = view === 1 ? 7 : view === 2 ? 22 : 17,
-      height = view === 1 ? 3.6 : view === 2 ? 46 : 8.4;
+    const rig = thirdPersonRig({ walking: false, view });
     desiredCamera.set(
-      p.x + Math.sin(yaw) * back,
-      p.y + height,
-      p.z + Math.cos(yaw) * back,
+      p.x + Math.sin(yaw) * rig.back,
+      p.y + rig.height,
+      p.z + Math.cos(yaw) * rig.back,
     );
     look.set(p.x - Math.sin(yaw) * 8, 1.5, p.z - Math.cos(yaw) * 8);
   } else {
