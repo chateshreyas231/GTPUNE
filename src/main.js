@@ -1,6 +1,15 @@
 import { createDelivery, tickDelivery, interactDelivery } from "./delivery.js";
-import { streetDetails } from "./street-details.js";
-import { loadSurfacePhotos, hydrateResidents } from "./visual-assets.js";
+import {
+  streetDetails,
+  plantTree,
+  attachLeafWind,
+  windTime,
+} from "./street-details.js";
+import {
+  loadSurfacePhotos,
+  hydrateResidents,
+  streetBuildingMaterial,
+} from "./visual-assets.js";
 import { lines } from "./dialogue.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -13,6 +22,7 @@ import {
   makeCar,
   person,
   origin,
+  streetHeight,
 } from "./city.js";
 const $ = (id) => document.getElementById(id);
 let city = fallbackCity();
@@ -77,7 +87,8 @@ const mats = {
   walk: material(0xb2af92),
   mark: material(0xc8c9aa),
   trunk: material(0x6e5c42),
-  leaf: material(0x566d43),
+  leaf: attachLeafWind(material(0x3f6840)),
+  leafDeep: attachLeafWind(material(0x2c5234)),
 };
 function box(w, h, d, mat, x, y, z, parent = scene) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -147,43 +158,8 @@ function renderRoads(cx, cz) {
   mergeStatic(roadGroup);
 }
 
-function facade() {
-  const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 512;
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = "#c7bc9e";
-  ctx.fillRect(0, 0, 512, 512);
-  if (surfacePhotos.plaster)
-    ctx.drawImage(surfacePhotos.plaster.image, 0, 0, 512, 512);
-  for (let y = 12; y < 512; y += 128) {
-    ctx.fillStyle = "#afa38b";
-    ctx.fillRect(0, y + 107, 512, 6);
-    for (let x = 20; x < 512; x += 128) {
-      ctx.fillStyle = "#302f2c";
-      ctx.fillRect(x - 5, y - 5, 76, 91);
-      ctx.fillStyle = "#637e82";
-      ctx.fillRect(x, y, 66, 78);
-      ctx.fillStyle = "#a7b5ac";
-      ctx.fillRect(x + 5, y + 3, 24, 68);
-      ctx.fillStyle = "#bcb8a4";
-      ctx.fillRect(x + 31, y, 3, 78);
-      ctx.fillRect(x, y + 38, 66, 3);
-      ctx.fillStyle = "#827b6a";
-      ctx.fillRect(x - 8, y + 80, 82, 10);
-    }
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  return tex;
-}
-const facadeTex = facade();
-const palette = [0xc9bd9f, 0xd6c5ad, 0xb7b8ac, 0xb8c1b0, 0xd1b29a];
-const buildingMats = palette.map(
-  (c) =>
-    new THREE.MeshStandardMaterial({ color: c, map: facadeTex, roughness: 1 }),
-);
+const palette = [0xe7d7bf, 0xf0ddc6, 0xd5d3c6, 0xd5ddd2, 0xefd0b8];
+const buildingMats = palette.map((c) => streetBuildingMaterial(c));
 const roofMat = material(0x9b9b8b);
 const obstacles = city.buildings.map((b) => {
   const xs = b.points.map((p) => p[0]),
@@ -218,7 +194,7 @@ function renderBuildings(cx, cz) {
     for (const p of b.points.slice(1)) shape.lineTo(p[0], -p[1]);
     shape.closePath();
     const geo = new THREE.ExtrudeGeometry(shape, {
-      depth: b.height,
+      depth: streetHeight(b.height, b.color),
       bevelEnabled: false,
     });
     geo.rotateX(-Math.PI / 2);
@@ -243,7 +219,7 @@ function renderBuildings(cx, cz) {
       }
     });
   }
-  detailGroup = streetDetails(cx, cz, roadSegments, collides);
+  detailGroup = streetDetails(cx, cz, roadSegments, collides, obstacles);
   mergeStatic(detailGroup);
   scene.add(detailGroup);
 }
@@ -279,19 +255,18 @@ const shopNames = [
   "नमस्कार पुणे",
   "BAKERY & CAFÉ",
 ];
-const treeGeo = new THREE.IcosahedronGeometry(1, 1);
 for (
   let i = 0;
   i < roadSegments.length;
-  i += Math.max(1, Math.floor(roadSegments.length / 170))
+  i += Math.max(1, Math.floor(roadSegments.length / 140))
 ) {
   const r = roadSegments[i];
-  for (let t = 22; t < r.length; t += 55) {
+  for (let t = 22; t < r.length; t += 70) {
     const dx = (r.b[0] - r.a[0]) / r.length,
       dz = (r.b[1] - r.a[1]) / r.length;
     for (const side of [-1, 1]) {
-      const x = r.a[0] + dx * t + dz * (r.width / 2 + 5) * side,
-        z = r.a[1] + dz * t - dx * (r.width / 2 + 5) * side;
+      const x = r.a[0] + dx * t + dz * (r.width / 2 + 4.4) * side,
+        z = r.a[1] + dz * t - dx * (r.width / 2 + 4.4) * side;
       if (
         roadSegments.some(
           (segment) =>
@@ -299,12 +274,15 @@ for (
         )
       )
         continue;
-      box(0.65, 5, 0.65, mats.trunk, x, 2.5, z);
-      const tree = new THREE.Mesh(treeGeo, mats.leaf);
-      tree.scale.set(4.5, 5.5, 4.5);
-      tree.position.set(x, 7, z);
-      tree.castShadow = true;
-      scene.add(tree);
+      const scale = 0.85 + (Math.abs(Math.floor(x * 0.37 + z * 0.21)) % 6) * 0.12;
+      plantTree(
+        scene,
+        x,
+        z,
+        scale,
+        { wood: mats.trunk, leaf: mats.leaf, leaf2: mats.leafDeep },
+        x * 0.17 + z * 0.13,
+      );
     }
   }
 }
@@ -330,6 +308,7 @@ for (const stop of city.stops)
 // Merge static scenery by material to keep draw calls low on integrated GPUs.
 function mergeStatic(root) {
   const batches = new Map();
+  const retire = [];
   for (const object of [...root.children]) {
     if (!object.isMesh) continue;
     object.updateMatrixWorld();
@@ -368,9 +347,11 @@ function mergeStatic(root) {
       if (!batches.has(mat)) batches.set(mat, []);
       batches.get(mat).push(geometry);
     }
+    if (source !== object.geometry) retire.push(source);
+    retire.push(object.geometry);
     root.remove(object);
-    object.geometry.dispose();
   }
+  for (const geometry of new Set(retire)) geometry.dispose();
   for (const [mat, geometries] of batches) {
     const geometry = mergeGeometries(geometries);
     const mesh = new THREE.Mesh(geometry, mat);
@@ -1155,6 +1136,7 @@ function animate() {
       0.1,
     );
   }
+  windTime.value += dt;
   const p = actor().position;
   if (Math.hypot(p.x - buildingCenter.x, p.z - buildingCenter.y) > 300)
     renderBuildings(p.x, p.z);
@@ -1234,6 +1216,8 @@ window.__pune = {
       wallet,
       voiceLocale: $("language").value,
       nearbyBuildingBatches: buildingGroup.children.length,
+      wind: windTime.value,
+      dressing: detailGroup?.userData.counts || null,
     };
   },
 };

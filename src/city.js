@@ -269,3 +269,10 @@ export function person(index) {
   };
   return g;
 }
+export function streetHeight(height, color = 0) {
+  const base = Math.min(120, Math.max(3, Number(height) || 12));
+  const raw = ((Number(color) % 1) + 1) % 1;
+  const t = Number.isFinite(raw) ? raw : 0;
+  const spread = 0.78 + t * 0.46;
+  return Math.round(Math.min(42, Math.max(7.2, base * spread)) * 10) / 10;
+}
