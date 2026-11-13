@@ -14,6 +14,20 @@ import {
   person,
   origin,
 } from "./city.js";
+import {
+  blocksDriving,
+  clampZoom,
+  createMapView,
+  mapScale,
+  panByPixels,
+  recenter,
+  sizeLabels,
+  toggleExpand,
+  toggleMin,
+  viewCenter,
+  wheelZoomFactor,
+  zoomBy,
+} from "./map-view.js";
 const $ = (id) => document.getElementById(id);
 let city = fallbackCity();
 try {
@@ -705,7 +719,12 @@ window.addEventListener("keydown", (e) => {
   keys.add(k);
 });
 window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
-window.addEventListener("blur", () => keys.clear());
+window.addEventListener("blur", () => {
+  keys.clear();
+  mapDrag = null;
+  mapCanvas.classList.remove("is-panning");
+  mapView.pointerOver = false;
+});
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && active) {
     paused = true;
@@ -787,15 +806,15 @@ const mapLayers = {
   people: true,
   places: true,
 };
-let mapZoom = 1;
-let mapSize = "dock";
+const mapView = createMapView();
 try {
   const savedLayers = JSON.parse(localStorage.getItem("pune-map-layers") || "{}");
   Object.assign(mapLayers, savedLayers);
-  mapZoom = Number(localStorage.getItem("pune-map-zoom")) || 1;
-  mapSize = localStorage.getItem("pune-map-size") || "dock";
+  mapView.zoom = clampZoom(Number(localStorage.getItem("pune-map-zoom")) || 1);
+  mapView.size = createMapView({
+    size: localStorage.getItem("pune-map-size") || "dock",
+  }).size;
 } catch {}
-mapZoom = Math.min(4, Math.max(0.45, mapZoom));
 for (const name of Object.keys(mapLayers)) {
   const box = $(`layer-${name}`);
   if (box) box.checked = mapLayers[name] !== false;
@@ -803,42 +822,124 @@ for (const name of Object.keys(mapLayers)) {
 function saveMap() {
   try {
     localStorage.setItem("pune-map-layers", JSON.stringify(mapLayers));
-    localStorage.setItem("pune-map-zoom", String(mapZoom));
-    localStorage.setItem("pune-map-size", mapSize);
+    localStorage.setItem("pune-map-zoom", String(mapView.zoom));
+    localStorage.setItem("pune-map-size", mapView.size);
   } catch {}
+}
+function resizeMap() {
+  if (mapView.size === "min") return;
+  const rect = mapCanvas.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(280, Math.floor(rect.width * dpr));
+  const height = Math.max(160, Math.floor(rect.height * dpr));
+  if (mapCanvas.width !== width || mapCanvas.height !== height) {
+    mapCanvas.width = width;
+    mapCanvas.height = height;
+  }
+}
+function syncMapHover() {
+  mapView.pointerOver =
+    mapView.size === "max" &&
+    ($("map-panel").matches(":hover") || mapDrag !== null);
 }
 function applyMapSize() {
   const panel = $("map-panel");
-  panel.classList.toggle("is-min", mapSize === "min");
-  panel.classList.toggle("is-max", mapSize === "max");
-  $("map-size").textContent = mapSize === "max" ? "DOCK" : "EXPAND";
-  $("map-min").textContent = mapSize === "min" ? "MAP" : "MIN";
+  const labels = sizeLabels(mapView.size);
+  panel.classList.toggle("is-min", mapView.size === "min");
+  panel.classList.toggle("is-max", mapView.size === "max");
+  $("map-size").textContent = labels.expand;
+  $("map-min").textContent = labels.min;
+  $("map-recenter").hidden = mapView.size !== "max";
+  syncMapHover();
   requestAnimationFrame(resizeMap);
 }
-function resizeMap() {
-  if (mapSize === "min") return;
+function bitmapPointer(dx, dy) {
   const rect = mapCanvas.getBoundingClientRect();
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  mapCanvas.width = Math.max(280, Math.floor(rect.width * dpr));
-  mapCanvas.height = Math.max(160, Math.floor(rect.height * dpr));
+  const sx = rect.width ? mapCanvas.width / rect.width : 1;
+  const sy = rect.height ? mapCanvas.height / rect.height : 1;
+  return {
+    dx: dx * sx,
+    dy: dy * sy,
+    scale: mapScale(mapView.size, mapView.zoom, mapCanvas.width || rect.width),
+  };
 }
+let mapDrag = null;
+function endMapDrag(e) {
+  if (!mapDrag || (e && e.pointerId !== mapDrag.id)) return;
+  mapDrag = null;
+  mapCanvas.classList.remove("is-panning");
+  syncMapHover();
+}
+mapCanvas.addEventListener("pointerdown", (e) => {
+  if (mapView.size !== "max" || e.button !== 0) return;
+  mapDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+  mapCanvas.setPointerCapture(e.pointerId);
+  mapCanvas.classList.add("is-panning");
+  syncMapHover();
+});
+mapCanvas.addEventListener("pointermove", (e) => {
+  if (!mapDrag || e.pointerId !== mapDrag.id) return;
+  const dx = e.clientX - mapDrag.x;
+  const dy = e.clientY - mapDrag.y;
+  if (!mapDrag.moved && Math.hypot(dx, dy) < 3) return;
+  mapDrag.moved = true;
+  mapDrag.x = e.clientX;
+  mapDrag.y = e.clientY;
+  const scaled = bitmapPointer(dx, dy);
+  const p = actor().position;
+  panByPixels(mapView, scaled.dx, scaled.dy, scaled.scale, p.x, p.z);
+});
+mapCanvas.addEventListener("pointerup", endMapDrag);
+mapCanvas.addEventListener("pointercancel", endMapDrag);
+mapCanvas.addEventListener("lostpointercapture", endMapDrag);
+$("map-panel").addEventListener("pointerenter", syncMapHover);
+$("map-panel").addEventListener("pointerleave", () => {
+  if (!mapDrag) mapView.pointerOver = false;
+});
+$("map-panel").addEventListener(
+  "wheel",
+  (e) => {
+    if (mapView.size === "min") return;
+    e.preventDefault();
+    const rect = mapCanvas.getBoundingClientRect();
+    const scale = mapScale(
+      mapView.size,
+      mapView.zoom,
+      mapCanvas.width || rect.width,
+    );
+    const perX = rect.width ? mapCanvas.width / rect.width : 1;
+    const perY = rect.height ? mapCanvas.height / rect.height : 1;
+    zoomBy(mapView, wheelZoomFactor(e.deltaY), {
+      offsetX: (e.clientX - rect.left - rect.width / 2) * perX,
+      offsetY: (e.clientY - rect.top - rect.height / 2) * perY,
+      scale,
+    });
+    saveMap();
+  },
+  { passive: false },
+);
 $("map-zoom-in").onclick = () => {
-  mapZoom = Math.min(4, mapZoom * 1.25);
+  zoomBy(mapView, 1.25);
   saveMap();
 };
 $("map-zoom-out").onclick = () => {
-  mapZoom = Math.max(0.45, mapZoom / 1.25);
+  zoomBy(mapView, 1 / 1.25);
   saveMap();
 };
 $("map-size").onclick = () => {
-  mapSize = mapSize === "max" ? "dock" : "max";
+  toggleExpand(mapView);
   applyMapSize();
   saveMap();
 };
 $("map-min").onclick = () => {
-  mapSize = mapSize === "min" ? "dock" : "min";
+  toggleMin(mapView);
   applyMapSize();
   saveMap();
+};
+$("map-recenter").onclick = () => {
+  const p = actor().position;
+  recenter(mapView, p.x, p.z);
 };
 for (const name of Object.keys(mapLayers)) {
   const box = $(`layer-${name}`);
@@ -850,17 +951,20 @@ for (const name of Object.keys(mapLayers)) {
 }
 applyMapSize();
 window.addEventListener("resize", resizeMap);
+if (typeof ResizeObserver !== "undefined")
+  new ResizeObserver(() => resizeMap()).observe(mapCanvas);
 function drawMap() {
-  if (mapSize === "min") return;
+  if (mapView.size === "min") return;
   const w = mapCanvas.width;
   const h = mapCanvas.height;
   const pos = actor().position;
   map.setTransform(1, 0, 0, 1, 0, 0);
   map.fillStyle = "#163b33";
   map.fillRect(0, 0, w, h);
-  const scale = (mapSize === "max" ? 0.28 : 0.18) * mapZoom * (w / 520);
-  const ox = w / 2 - pos.x * scale;
-  const oz = h / 2 - pos.z * scale;
+  const scale = mapScale(mapView.size, mapView.zoom, w);
+  const center = viewCenter(mapView, pos.x, pos.z);
+  const ox = w / 2 - center.x * scale;
+  const oz = h / 2 - center.z * scale;
   const reach = Math.hypot(w, h) / scale + 80;
   const sx = (x) => ox + x * scale;
   const sy = (z) => oz + z * scale;
@@ -873,7 +977,7 @@ function drawMap() {
     map.fillStyle = "rgba(214, 206, 176, 0.28)";
     for (const b of city.buildings) {
       const p0 = b.points[0];
-      if (Math.abs(p0[0] - pos.x) > reach || Math.abs(p0[1] - pos.z) > reach)
+      if (Math.abs(p0[0] - center.x) > reach || Math.abs(p0[1] - center.z) > reach)
         continue;
       map.beginPath();
       b.points.forEach((p, i) =>
@@ -886,10 +990,10 @@ function drawMap() {
   if (mapLayers.roads) {
     map.strokeStyle = "#6d8f7c";
     map.lineCap = "round";
-    const viewMinX = pos.x - reach;
-    const viewMaxX = pos.x + reach;
-    const viewMinZ = pos.z - reach;
-    const viewMaxZ = pos.z + reach;
+    const viewMinX = center.x - reach;
+    const viewMaxX = center.x + reach;
+    const viewMinZ = center.z - reach;
+    const viewMaxZ = center.z + reach;
     for (const r of city.roads) {
       let minX = Infinity;
       let maxX = -Infinity;
@@ -949,7 +1053,7 @@ function drawMap() {
       map.beginPath();
       map.arc(sx(stop.point[0]), sy(stop.point[1]), current ? 6 : 4, 0, Math.PI * 2);
       map.fill();
-      if (mapSize === "max" || current) {
+      if (mapView.size === "max" || current) {
         map.fillStyle = "#f6f3e6";
         map.font = `${Math.max(11, w / 48)}px sans-serif`;
         map.fillText(stop.name, sx(stop.point[0]) + 8, sy(stop.point[1]) - 6);
@@ -960,7 +1064,7 @@ function drawMap() {
   map.font = `${Math.max(12, w / 40)}px sans-serif`;
   map.fillText("N", w / 2 - 4, 18);
   map.save();
-  map.translate(w / 2, h / 2);
+  map.translate(sx(pos.x), sy(pos.z));
   map.rotate(-yaw);
   map.fillStyle = "#f2e5b7";
   map.beginPath();
@@ -977,21 +1081,25 @@ const desiredCamera = new THREE.Vector3(),
 let frame = 0;
 function animate() {
   requestAnimationFrame(animate);
+  syncMapHover();
   const now = performance.now();
   const dt = Math.min((now - previousTime) / 1000, 0.05);
   previousTime = now;
   const running = active && !paused && !$("instructions").open;
   if (running) {
     elapsed += dt;
-    const accel =
-      (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
-      (keys.has("s") || keys.has("arrowdown") ? 1 : 0);
-    const steering =
-      (keys.has("a") || keys.has("arrowleft") ? 1 : 0) -
-      (keys.has("d") || keys.has("arrowright") ? 1 : 0);
+    const drive = !blocksDriving(mapView);
+    const accel = drive
+      ? (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
+        (keys.has("s") || keys.has("arrowdown") ? 1 : 0)
+      : 0;
+    const steering = drive
+      ? (keys.has("a") || keys.has("arrowleft") ? 1 : 0) -
+        (keys.has("d") || keys.has("arrowright") ? 1 : 0)
+      : 0;
     speed += accel * (walking ? 9 : 12) * dt;
     speed *= Math.exp(
-      -dt * (keys.has(" ") ? 5 : accel ? 0.13 : walking ? 6 : 0.7),
+      -dt * (drive && keys.has(" ") ? 5 : accel ? 0.13 : walking ? 6 : 0.7),
     );
     speed = THREE.MathUtils.clamp(speed, walking ? -2 : -9, walking ? 5 : 38);
     if (walking || Math.abs(speed) > 0.15)
@@ -1234,6 +1342,11 @@ window.__pune = {
       wallet,
       voiceLocale: $("language").value,
       nearbyBuildingBatches: buildingGroup.children.length,
+      mapSize: mapView.size,
+      mapFollow: mapView.follow,
+      mapFocusX: mapView.focusX,
+      mapFocusZ: mapView.focusZ,
+      mapZoom: mapView.zoom,
     };
   },
 };
