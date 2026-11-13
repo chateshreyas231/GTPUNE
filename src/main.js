@@ -393,7 +393,7 @@ const player = makeCar(0xe5d6ae);
 player.rotation.y = spawnHeading;
 scene.add(player);
 player.position.set(city.spawn[0], 0, city.spawn[1]);
-const avatar = person(3);
+const avatar = person(0, { player: true });
 avatar.visible = false;
 scene.add(avatar);
 const localRoads = roadSegments.filter(
@@ -505,6 +505,11 @@ let active = false,
   elapsed = 0,
   distanceTravelled = 0;
 const keys = new Set();
+const walkVel = new THREE.Vector3();
+let lookYaw = spawnHeading;
+let lookPitch = 0.22;
+let vy = 0;
+let jumpQueued = false;
 let previousTime = performance.now();
 let audioContext, engine, engineGain, toastTimer;
 const voicePlayer = new Audio();
@@ -587,8 +592,14 @@ function reset() {
   player.position.set(city.spawn[0], 0, city.spawn[1]);
   speed = 0;
   yaw = spawnHeading;
+  lookYaw = spawnHeading;
+  lookPitch = 0.22;
+  vy = 0;
+  jumpQueued = false;
+  walkVel.set(0, 0, 0);
   walking = false;
   avatar.visible = false;
+  avatar.position.y = 0;
   player.rotation.y = spawnHeading;
   toast("Back in Deccan. The evening is yours.");
 }
@@ -604,6 +615,9 @@ function toggleWalk() {
     }
     walking = false;
     avatar.visible = false;
+    avatar.position.y = 0;
+    vy = 0;
+    walkVel.set(0, 0, 0);
     yaw = player.rotation.y;
   } else {
     const p = player.position
@@ -614,14 +628,22 @@ function toggleWalk() {
       return;
     }
     walking = true;
+    lookYaw = yaw;
+    lookPitch = 0.22;
+    vy = 0;
+    jumpQueued = false;
+    walkVel.set(0, 0, 0);
     avatar.position.copy(p);
+    avatar.position.y = 0;
+    avatar.rotation.y = yaw;
     avatar.visible = true;
+    avatar.userData.walk?.(0, 0);
   }
   speed = 0;
   toast(
     walking
-      ? "On foot. Press T near a neighbour to talk."
-      : "Back behind the wheel.",
+      ? "On foot. Mouse looks, Shift runs, Space jumps."
+      : "Back behind the wheel. Space brakes.",
   );
 }
 function collides(x, z, r = 1.4) {
@@ -678,6 +700,7 @@ $("job").onclick = startJob;
 function action(key) {
   if (key === "p" && active) {
     paused = !paused;
+    if (paused && document.pointerLockElement) document.exitPointerLock?.();
     toast(paused ? "Paused · press P to resume" : "Back on the road");
   }
   if (paused || !active) return;
@@ -690,6 +713,7 @@ function action(key) {
   }
   if (key === "h") honk();
   if (key === "t") talk();
+  if (key === " " && walking && avatar.position.y <= 0.05) jumpQueued = true;
 }
 window.addEventListener("keydown", (e) => {
   if (
@@ -717,7 +741,7 @@ $("play").onclick = () => {
   active = true;
   document.body.classList.add("playing");
   $("play").blur();
-  toast("WASD to drive · E to walk · T to talk");
+  toast("WASD drives · click to look · E walks · Shift runs · Space jumps");
 };
 $("audio").onclick = enableSound;
 $("photo").onclick = () => {
@@ -746,8 +770,30 @@ $("photo").onclick = () => {
 $("reset").onclick = reset;
 $("help").onclick = () => {
   keys.clear();
+  if (document.pointerLockElement) document.exitPointerLock?.();
   $("instructions").showModal();
 };
+$("world").addEventListener("click", () => {
+  if (!active || paused || $("instructions").open) return;
+  // Automated browsers keep the cursor so the existing UI clicks still land.
+  if (navigator.webdriver) return;
+  if (document.pointerLockElement === $("world")) return;
+  try {
+    const pending = $("world").requestPointerLock?.();
+    if (pending && typeof pending.catch === "function") pending.catch(() => {});
+  } catch {
+    /* Pointer lock is optional; keyboard controls still work. */
+  }
+});
+document.addEventListener("mousemove", (event) => {
+  if (document.pointerLockElement !== $("world") || !walking || paused) return;
+  lookYaw -= event.movementX * 0.0022;
+  lookPitch = THREE.MathUtils.clamp(
+    lookPitch - event.movementY * 0.002,
+    -0.28,
+    0.72,
+  );
+});
 $("close-help").onclick = $("resume").onclick = () => $("instructions").close();
 $("lighting").onclick = () => {
   night = !night;
@@ -961,7 +1007,7 @@ function drawMap() {
   map.fillText("N", w / 2 - 4, 18);
   map.save();
   map.translate(w / 2, h / 2);
-  map.rotate(-yaw);
+  map.rotate(walking ? -lookYaw : -yaw);
   map.fillStyle = "#f2e5b7";
   map.beginPath();
   map.moveTo(0, -9);
@@ -983,45 +1029,96 @@ function animate() {
   const running = active && !paused && !$("instructions").open;
   if (running) {
     elapsed += dt;
-    const accel =
-      (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
-      (keys.has("s") || keys.has("arrowdown") ? 1 : 0);
-    const steering =
-      (keys.has("a") || keys.has("arrowleft") ? 1 : 0) -
-      (keys.has("d") || keys.has("arrowright") ? 1 : 0);
-    speed += accel * (walking ? 9 : 12) * dt;
-    speed *= Math.exp(
-      -dt * (keys.has(" ") ? 5 : accel ? 0.13 : walking ? 6 : 0.7),
-    );
-    speed = THREE.MathUtils.clamp(speed, walking ? -2 : -9, walking ? 5 : 38);
-    if (walking || Math.abs(speed) > 0.15)
-      yaw +=
-        steering *
-        dt *
-        (walking ? 2.4 : Math.min(1.2, Math.abs(speed) * 0.12)) *
-        Math.sign(speed || 1);
-    const p = actor().position,
-      nx = p.x - Math.sin(yaw) * speed * dt,
-      nz = p.z - Math.cos(yaw) * speed * dt;
-    const hitTraffic = traffic.some(
-      (t) =>
-        Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) <
-        (walking ? 1.8 : 3),
-    );
-    const hitPed =
-      !walking &&
-      pedestrians.some(
+    const p = actor().position;
+    if (walking) {
+      const forward =
+        (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
+        (keys.has("s") || keys.has("arrowdown") ? 1 : 0);
+      const strafe =
+        (keys.has("d") || keys.has("arrowright") ? 1 : 0) -
+        (keys.has("a") || keys.has("arrowleft") ? 1 : 0);
+      const sprint = keys.has("shift");
+      const top = sprint ? 6.8 : 1.75;
+      let wishX = -Math.sin(lookYaw) * forward + Math.cos(lookYaw) * strafe;
+      let wishZ = -Math.cos(lookYaw) * forward - Math.sin(lookYaw) * strafe;
+      const wish = Math.hypot(wishX, wishZ);
+      if (wish > 1e-5) {
+        wishX = (wishX / wish) * top;
+        wishZ = (wishZ / wish) * top;
+      } else {
+        wishX = 0;
+        wishZ = 0;
+      }
+      const blend = 1 - Math.exp(-dt * 12);
+      walkVel.x += (wishX - walkVel.x) * blend;
+      walkVel.z += (wishZ - walkVel.z) * blend;
+      if (!forward && !strafe) walkVel.multiplyScalar(Math.exp(-dt * 16));
+      if (jumpQueued && p.y <= 0.04 && vy <= 0.01) {
+        vy = 4.5;
+        jumpQueued = false;
+      }
+      vy -= 24 * dt;
+      let nextY = p.y + vy * dt;
+      if (nextY <= 0) {
+        nextY = 0;
+        vy = 0;
+      }
+      const nx = p.x + walkVel.x * dt;
+      const nz = p.z + walkVel.z * dt;
+      speed = Math.hypot(walkVel.x, walkVel.z);
+      const blocked =
+        collides(nx, nz, 0.4) ||
+        traffic.some(
+          (t) => Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) < 1.8,
+        );
+      if (!blocked) {
+        p.x = nx;
+        p.z = nz;
+        distanceTravelled += speed * dt;
+      } else {
+        walkVel.set(0, 0, 0);
+        speed = 0;
+      }
+      p.y = nextY;
+      if (speed > 0.25) {
+        const face = Math.atan2(-walkVel.x, -walkVel.z);
+        const delta = Math.atan2(
+          Math.sin(face - avatar.rotation.y),
+          Math.cos(face - avatar.rotation.y),
+        );
+        avatar.rotation.y += delta * (1 - Math.exp(-dt * 10));
+      }
+      avatar.userData.walk?.(dt, speed);
+    } else {
+      const accel =
+        (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
+        (keys.has("s") || keys.has("arrowdown") ? 1 : 0);
+      const steering =
+        (keys.has("a") || keys.has("arrowleft") ? 1 : 0) -
+        (keys.has("d") || keys.has("arrowright") ? 1 : 0);
+      speed += accel * 12 * dt;
+      speed *= Math.exp(-dt * (keys.has(" ") ? 5 : accel ? 0.13 : 0.7));
+      speed = THREE.MathUtils.clamp(speed, -9, 38);
+      if (Math.abs(speed) > 0.15)
+        yaw +=
+          steering *
+          dt *
+          Math.min(1.2, Math.abs(speed) * 0.12) *
+          Math.sign(speed || 1);
+      const nx = p.x - Math.sin(yaw) * speed * dt,
+        nz = p.z - Math.cos(yaw) * speed * dt;
+      const hitTraffic = traffic.some(
+        (t) => Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) < 3,
+      );
+      const hitPed = pedestrians.some(
         (t) => Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) < 1.7,
       );
-    if (!collides(nx, nz, walking ? 0.4 : 1.4) && !hitTraffic && !hitPed) {
-      p.set(nx, 0, nz);
-      distanceTravelled += Math.abs(speed) * dt;
-    } else {
-      speed = -speed * 0.15;
+      if (!collides(nx, nz, 1.4) && !hitTraffic && !hitPed) {
+        p.set(nx, 0, nz);
+        distanceTravelled += Math.abs(speed) * dt;
+      } else speed = -speed * 0.15;
+      player.rotation.y = yaw;
     }
-    actor().rotation.y = yaw;
-    if (walking)
-      avatar.userData.walk?.(elapsed, Math.min(1, Math.abs(speed) / 2));
     const limit = city.source === "illustrative" ? 900 : 6500;
     if (Math.abs(p.x) > limit || Math.abs(p.z) > limit) {
       reset();
@@ -1072,7 +1169,8 @@ function animate() {
         Math.sin(p.angle) * Math.sin(elapsed * 0.3 + p.phase) * 8;
       p.mesh.position.z +=
         Math.cos(p.angle) * Math.sin(elapsed * 0.3 + p.phase) * 8;
-      p.mesh.userData.walk?.(elapsed + p.phase, 0.8);
+      const step = Math.cos(elapsed * 0.3 + p.phase);
+      p.mesh.userData.walk?.(dt, Math.abs(step) * 2.4);
       p.mesh.rotation.y =
         p.angle + (Math.cos(elapsed * 0.3 + p.phase) > 0 ? Math.PI : 0);
     }
@@ -1158,12 +1256,26 @@ function animate() {
   const p = actor().position;
   if (Math.hypot(p.x - buildingCenter.x, p.z - buildingCenter.y) > 300)
     renderBuildings(p.x, p.z);
-  if (active) {
+  if (active && walking) {
+    const back = view === 1 ? 2.4 : view === 2 ? 14 : 4.3;
+    const orbit = view === 2 ? 0.85 : lookPitch;
+    const cosP = Math.cos(orbit);
+    desiredCamera.set(
+      p.x + Math.sin(lookYaw) * back * cosP,
+      p.y + 1.5 + Math.sin(orbit) * back,
+      p.z + Math.cos(lookYaw) * back * cosP,
+    );
+    look.set(
+      p.x - Math.sin(lookYaw) * 2.5,
+      p.y + 1.35,
+      p.z - Math.cos(lookYaw) * 2.5,
+    );
+  } else if (active) {
     const back = view === 1 ? 5 : view === 2 ? 18 : 13,
       height = view === 1 ? 3 : view === 2 ? 42 : 7;
     desiredCamera.set(
       p.x + Math.sin(yaw) * back,
-      p.y + (walking ? height * 0.65 : height),
+      p.y + height,
       p.z + Math.cos(yaw) * back,
     );
     look.set(p.x - Math.sin(yaw) * 8, 1.5, p.z - Math.cos(yaw) * 8);
