@@ -15,6 +15,11 @@ import {
   PERSON_STOREY,
   STOREY_METERS,
   fillBuildingGaps,
+  laneLateral,
+  sidewalkLateral,
+  DRIVE_LANE_METERS,
+  BIKE_PARK_METERS,
+  PUNE_CARRIAGE_METERS,
 } from "../src/city.js";
 test("fallback city is deterministic and includes a playable route", () => {
   const a = fallbackCity();
@@ -59,26 +64,46 @@ test("OSM importer uses footprints and height and snaps spawn to roads", () => {
 });
 test("empty map cannot silently activate real-map mode", () =>
   assert.throws(() => parseOSM({ elements: [] }), /no driveable roads/));
-test("road width uses a width tag, then lanes, then the class default", () => {
+test("drivable width is one lane each way plus parked bikes", () => {
+  assert.equal(
+    PUNE_CARRIAGE_METERS,
+    DRIVE_LANE_METERS * 2 + BIKE_PARK_METERS * 2,
+  );
+  assert.ok(PUNE_CARRIAGE_METERS < 7);
   assert.deepEqual(roadWidthFromTags({ highway: "secondary", width: "10" }), {
-    width: 10,
+    width: PUNE_CARRIAGE_METERS,
     widthSource: "width-tag",
   });
   assert.deepEqual(roadWidthFromTags({ highway: "primary", lanes: "3" }), {
-    width: 10.5,
+    width: PUNE_CARRIAGE_METERS,
     widthSource: "lanes",
   });
   assert.deepEqual(roadWidthFromTags({ highway: "primary" }), {
-    width: 7,
+    width: PUNE_CARRIAGE_METERS,
     widthSource: "class-default",
   });
   assert.deepEqual(roadWidthFromTags({ highway: "living_street" }), {
     width: 5,
     widthSource: "class-default",
   });
+  assert.deepEqual(roadWidthFromTags({ highway: "residential", lanes: "1" }), {
+    width: 3.5,
+    widthSource: "lanes",
+  });
   assert.equal(sidewalkMeters("Gopal Krushna Gokhale Path"), 2.4);
   assert.equal(sidewalkMeters("Paud Road"), 2.2);
   assert.equal(sidewalkMeters("Bhandarkar Path"), 1.6);
+  const segment = { width: PUNE_CARRIAGE_METERS, sidewalk: 1.6 };
+  const right = laneLateral(segment, "car", 1);
+  const left = laneLateral(segment, "car", -1);
+  assert.ok(right > 0 && left < 0);
+  assert.ok(Math.abs(right - left) > 2.5);
+  const bike = laneLateral(segment, "motorcycle", 1);
+  assert.ok(bike > right);
+  assert.ok(bike < PUNE_CARRIAGE_METERS / 2);
+  const walk = sidewalkLateral(segment, 1);
+  assert.ok(walk > PUNE_CARRIAGE_METERS / 2);
+  assert.ok(walk < PUNE_CARRIAGE_METERS / 2 + segment.sidewalk);
 });
 test("building height prefers a height tag, then levels, then the type median", () => {
   const tagged = buildingSizeFromTags({
@@ -105,7 +130,10 @@ test("building height prefers a height tag, then levels, then the type median", 
   assert.equal(street.height, 9 * PERSON_STOREY);
   assert.equal(street.floors, 9);
   assert.equal(street.storey, PERSON_STOREY);
-  assert.equal(buildingSizeFromTags({ building: "commercial" }).height, street.height);
+  assert.equal(
+    buildingSizeFromTags({ building: "commercial" }).height,
+    street.height,
+  );
   assert.ok(Math.abs(PERSON_STOREY - PERSON_METERS) < 0.4);
   assert.ok((street.height - PERSON_METERS) / PERSON_STOREY >= 4);
   assert.equal(
@@ -119,7 +147,11 @@ test("OSM footprints stay on the surveyed outline", () => {
     elements: [
       {
         id: 7,
-        tags: { highway: "residential", name: "Deccan Gymkhana Road", lanes: "2" },
+        tags: {
+          highway: "residential",
+          name: "Deccan Gymkhana Road",
+          lanes: "2",
+        },
         geometry: [
           { lat: 18.516, lon: 73.841 },
           { lat: 18.517, lon: 73.841 },
@@ -138,7 +170,7 @@ test("OSM footprints stay on the surveyed outline", () => {
       },
     ],
   });
-  assert.equal(map.roads[0].width, 7);
+  assert.equal(map.roads[0].width, PUNE_CARRIAGE_METERS);
   assert.equal(map.roads[0].widthSource, "lanes");
   assert.equal(map.roads[0].sidewalk, 1.6);
   assert.equal(map.buildings[0].points.length, 5);
@@ -185,25 +217,44 @@ test("a row of equal street roofs does not stay level", () => {
 });
 
 test("infill between equal roofs is not one height", () => {
-  const roads = [{ points: [[-20, -10], [-20, 140]], width: 8 }];
+  const roads = [
+    {
+      points: [
+        [-20, -10],
+        [-20, 140],
+      ],
+      width: 8,
+    },
+  ];
   const blocks = [0, 1, 2, 3, 4].map((i) =>
     block(0, i * 22, 10, 14, 18, "height-tag"),
   );
   const infill = fillBuildingGaps(blocks, roads);
   assert.ok(infill.length >= 2);
   const heights = infill.map((building) => building.height);
-  assert.ok(new Set(heights.map((height) => Math.round(height * 10))).size >= 2);
+  assert.ok(
+    new Set(heights.map((height) => Math.round(height * 10))).size >= 2,
+  );
   assert.ok(heights.every((height) => height >= 3 && height <= 36));
-  assert.equal(heights.every((height) => height === heights[0]), false);
+  assert.equal(
+    heights.every((height) => height === heights[0]),
+    false,
+  );
 });
 
 test("FC Road roofs sit several person-storeys up and do not share one height", () => {
   const map = parseOSM(
-    JSON.parse(readFileSync(new URL("../public/data/pune-osm.json", import.meta.url), "utf8")),
+    JSON.parse(
+      readFileSync(
+        new URL("../public/data/pune-osm.json", import.meta.url),
+        "utf8",
+      ),
+    ),
   );
   const fc = project(18.5235, 73.8412);
   const wall = map.buildings.filter((building) => {
-    if (building.infill || building.heightSource !== "type-default") return false;
+    if (building.infill || building.heightSource !== "type-default")
+      return false;
     if (!["yes", "commercial", "retail", "residential"].includes(building.kind))
       return false;
     let x = 0;
@@ -236,8 +287,10 @@ test("FC Road roofs sit several person-storeys up and do not share one height", 
       (building) =>
         building.height >= 3 &&
         building.height <= 120 &&
-        Math.abs(building.height / STOREY_METERS - Math.round(building.height / STOREY_METERS)) <
-          0.02,
+        Math.abs(
+          building.height / STOREY_METERS -
+            Math.round(building.height / STOREY_METERS),
+        ) < 0.02,
     ),
   );
   const infillHeights = map.buildings
