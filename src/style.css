@@ -302,6 +302,11 @@ footer {
   flex: 1;
   height: auto;
   min-height: 240px;
+  cursor: grab;
+  touch-action: none;
+}
+#map.is-panning {
+  cursor: grabbing;
 }
 .map-options,
 .map-legend {

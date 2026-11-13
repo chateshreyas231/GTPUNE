@@ -10,6 +10,20 @@ export const SHOP_BAY_M = 4.5;
 export const TREE_SPACING_M = 14;
 export const LEAF_CLUMPS = 5;
 
+// White centre dashes and a yellow edge line on each side of the carriageway.
+export function laneMarking(length) {
+  const dashes = [];
+  for (let t = 6; t < length; t += 18)
+    dashes.push({ t, color: "white", length: 5 });
+  return {
+    dashes,
+    edges: [
+      { side: -1, color: "yellow" },
+      { side: 1, color: "yellow" },
+    ],
+  };
+}
+
 export function swayCanopies(root, time) {
   const trees = root?.userData?.trees;
   if (!trees) return;
@@ -216,6 +230,32 @@ export function streetDetails(cx, cz, roads, blocked, buildings = []) {
         );
         board.rotation.y = ry;
         shops++;
+      }
+      if ((b.height || 0) >= 7) {
+        const balconyY = Math.min(6.6, Math.max(4.8, (b.height || 9) * 0.55));
+        const slabW = Math.min(len * 0.55, 3.2);
+        const slab = box(
+          0.72,
+          0.08,
+          slabW,
+          mats.concrete,
+          mx + nx * 0.42,
+          balconyY,
+          mz + nz * 0.42,
+        );
+        slab.rotation.y = ry;
+        slab.name = "balcony";
+        const rail = box(
+          0.06,
+          0.28,
+          slabW,
+          mats.metal,
+          mx + nx * 0.74,
+          balconyY + 0.2,
+          mz + nz * 0.74,
+        );
+        rail.rotation.y = ry;
+        rail.name = "balcony";
       }
     }
   }

@@ -45,16 +45,18 @@ export function fallbackCity() {
           color: rnd(),
         });
       }
+  const stops = [
+    { name: "FC ROAD", point: [-5, -450] },
+    { name: "KOTHRUD", point: [-600, 300] },
+    { name: "DECCAN GYMKHANA", point: [-5, 70] },
+  ];
   return {
     source: "illustrative",
     roads,
     buildings,
     spawn: [-5, 70],
-    stops: [
-      { name: "FC ROAD", point: [-5, -450] },
-      { name: "KOTHRUD", point: [-600, 300] },
-      { name: "DECCAN GYMKHANA", point: [-5, 70] },
-    ],
+    stops,
+    places: ensureCivicPlaces([], stops),
   };
 }
 // Survey constants from public/data/pune-osm.json. See docs/MEASUREMENTS.md.
@@ -160,12 +162,121 @@ export function buildingSizeFromTags(tags = {}) {
   };
 }
 
+export function placeKindFromTags(tags = {}) {
+  if (tags.amenity === "fuel") return "fuel";
+  if (
+    tags.amenity === "gym" ||
+    tags.leisure === "fitness_centre" ||
+    tags.leisure === "fitness_station"
+  )
+    return "gym";
+  if (
+    tags.leisure === "pitch" ||
+    tags.leisure === "playground" ||
+    tags.leisure === "sports_hall" ||
+    tags.leisure === "stadium" ||
+    tags.leisure === "track"
+  )
+    return "ground";
+  return null;
+}
+
+export function elementPoint(element) {
+  if (Array.isArray(element.geometry) && element.geometry.length) {
+    let x = 0,
+      z = 0;
+    for (const p of element.geometry) {
+      const q = project(p.lat, p.lon);
+      x += q[0];
+      z += q[1];
+    }
+    return [x / element.geometry.length, z / element.geometry.length];
+  }
+  if (Number.isFinite(element.lat) && Number.isFinite(element.lon))
+    return project(element.lat, element.lon);
+  return null;
+}
+
+export function districtOf(point, stops = []) {
+  let best = stops[0],
+    distance = Infinity;
+  for (const stop of stops) {
+    const d = Math.hypot(point[0] - stop.point[0], point[1] - stop.point[1]);
+    if (d < distance) {
+      distance = d;
+      best = stop;
+    }
+  }
+  const name = String(best?.name || "").toUpperCase();
+  if (name.includes("KOTHRUD")) return "Kothrud";
+  if (name.includes("FC")) return "FC";
+  return "Deccan";
+}
+
+export function civicName(kind, district, used) {
+  const noun = kind === "fuel" ? "Fuel" : kind === "gym" ? "Gym" : "Ground";
+  let name = `${district} ${noun}`;
+  if (!used.has(name)) {
+    used.add(name);
+    return name;
+  }
+  let n = 2;
+  while (used.has(`${name} ${n}`)) n += 1;
+  name = `${name} ${n}`;
+  used.add(name);
+  return name;
+}
+
+// OSM sites keep their surveyed point. Missing kinds get an ordinary site
+// in each of FC Road, Deccan, and Kothrud. Names are not business marks.
+export function ensureCivicPlaces(rawPlaces, stops) {
+  const places = rawPlaces.map((place) => ({ ...place }));
+  const offsets = {
+    fuel: [36, 18],
+    gym: [-28, 22],
+    ground: [18, -34],
+  };
+  for (const kind of ["fuel", "gym", "ground"]) {
+    for (const stop of stops) {
+      const district = districtOf(stop.point, stops);
+      const exists = places.some(
+        (place) =>
+          place.kind === kind && districtOf(place.point, stops) === district,
+      );
+      if (exists) continue;
+      places.push({
+        kind,
+        point: [
+          stop.point[0] + offsets[kind][0],
+          stop.point[1] + offsets[kind][1],
+        ],
+        osm: false,
+      });
+    }
+  }
+  const used = new Set();
+  return places.map((place) => {
+    const district = districtOf(place.point, stops);
+    return {
+      ...place,
+      district,
+      name: civicName(place.kind, district, used),
+    };
+  });
+}
+
 export function parseOSM(data) {
   if (!Array.isArray(data.elements))
     throw Error("Invalid OpenStreetMap response");
   const roads = [],
-    buildings = [];
+    buildings = [],
+    rawPlaces = [];
   for (const e of data.elements) {
+    const kind = placeKindFromTags(e.tags);
+    if (kind) {
+      const point = elementPoint(e);
+      if (point) rawPlaces.push({ kind, point, osm: true });
+    }
     if (!e.geometry?.length || !e.tags) continue;
     const points = e.geometry.map((p) => project(p.lat, p.lon));
     if (
@@ -232,16 +343,18 @@ export function parseOSM(data) {
     return best;
   };
   const spawn = nearest([0, 0]);
+  const stops = [
+    { name: "FC ROAD", point: nearest(project(18.5235, 73.8412)) },
+    { name: "KOTHRUD", point: nearest(project(18.5074, 73.8077)) },
+    { name: "DECCAN GYMKHANA", point: spawn },
+  ];
   return {
     source: "OpenStreetMap",
     roads,
     buildings,
     spawn,
-    stops: [
-      { name: "FC ROAD", point: nearest(project(18.5235, 73.8412)) },
-      { name: "KOTHRUD", point: nearest(project(18.5074, 73.8077)) },
-      { name: "DECCAN GYMKHANA", point: spawn },
-    ],
+    stops,
+    places: ensureCivicPlaces(rawPlaces, stops),
   };
 }
 export function segmentDistance(x, z, a, b) {
@@ -308,69 +421,40 @@ export function makeCar(color = 0xeee6cc, rickshaw = false) {
     }
   return g;
 }
-export function person(index) {
-  const g = new THREE.Group(),
-    skin = [0x8a553b, 0xb67b50, 0x754b38, 0xcc996b][index % 4],
-    shirt = [0xe9ac52, 0x8aaea6, 0xb66c65, 0xeff0d7, 0x816c9a][index % 5];
-  const mat = (c) =>
-    new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
-  const add = (geo, c, x, y, z, parent = g) => {
-    const m = new THREE.Mesh(geo, mat(c));
-    m.position.set(x, y, z);
-    m.castShadow = true;
-    parent.add(m);
-    return m;
-  };
-  add(new THREE.SphereGeometry(0.19, 16, 12), skin, 0, 1.65, 0).scale.set(
-    0.86,
-    1.12,
-    0.9,
-  );
-  add(
-    new THREE.SphereGeometry(0.195, 12, 8),
-    0x242322,
-    0,
-    1.76,
-    0.015,
-  ).scale.set(0.92, 0.55, 0.97);
-  add(new THREE.CylinderGeometry(0.085, 0.09, 0.12, 8), skin, 0, 1.43, 0);
-  add(
-    new THREE.CylinderGeometry(0.23, 0.19, 0.58, 12),
-    shirt,
-    0,
-    1.1,
-    0,
-  ).scale.z = 0.65;
-  for (const x of [-0.065, 0.065]) {
-    add(new THREE.SphereGeometry(0.025, 8, 6), 0xe6dac8, x, 1.68, -0.16);
-    add(new THREE.SphereGeometry(0.012, 6, 6), 0x242424, x, 1.68, -0.181);
-  }
-  add(new THREE.SphereGeometry(0.035, 8, 6), skin, 0, 1.61, -0.18);
-  const legs = [],
-    arms = [];
-  for (const side of [-1, 1]) {
-    const leg = new THREE.Group();
-    leg.position.set(side * 0.11, 0.83, 0);
-    g.add(leg);
-    legs.push(leg);
-    add(new THREE.CapsuleGeometry(0.09, 0.48, 4, 8), 0x344848, 0, -0.3, 0, leg);
-    add(new THREE.BoxGeometry(0.17, 0.13, 0.3), 0x262823, 0, -0.7, -0.05, leg);
-    const arm = new THREE.Group();
-    arm.position.set(side * 0.25, 1.34, 0);
-    g.add(arm);
-    arms.push(arm);
-    add(new THREE.CapsuleGeometry(0.065, 0.4, 4, 8), skin, 0, -0.25, 0, arm);
-    add(new THREE.SphereGeometry(0.075, 8, 6), skin, 0, -0.53, 0, arm);
-  }
-  g.userData.walk = (time, amount = 1) => {
-    legs.forEach(
-      (p, i) =>
-        (p.rotation.x = Math.sin(time * 6 + i * Math.PI) * 0.45 * amount),
-    );
-    arms.forEach(
-      (p, i) =>
-        (p.rotation.x = -Math.sin(time * 6 + i * Math.PI) * 0.35 * amount),
-    );
-  };
-  return g;
-}
+export {
+  stepGait,
+  person,
+  residentProfile,
+  RESIDENTS,
+  orbitLook,
+  footPace,
+  beginJump,
+  WALK_SPEED,
+  RUN_SPEED,
+  JUMP_SPEED,
+} from "./people.js";
+export {
+  mulberry32,
+  nodeKey,
+  splitRoadsAtJunctions,
+  roadAdjacency,
+  planTrip,
+  segmentPoint,
+  tripPolyline,
+  advanceAlong,
+  chooseGoal,
+  laneLateral,
+  sidewalkLateral,
+} from "./routes.js";
+export {
+  STREET_FLEET,
+  CAR_BODIES,
+  BIKE_BODIES,
+  BODY_LABELS,
+  VEHICLE_TONES,
+  fleetBody,
+  distanceGain,
+  makeVehicle,
+  makeMotorcycle,
+} from "./vehicles.js";
+

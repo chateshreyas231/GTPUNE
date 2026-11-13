@@ -7,7 +7,7 @@
     <title>PUNE / After Hours</title>
   </head>
   <body>
-    <canvas id="world" aria-label="Interactive 3D Pune driving game"></canvas>
+    <canvas id="world" tabindex="0" aria-label="Interactive 3D Pune driving game"></canvas>
     <div id="shade"></div>
     <header>
       <a class="brand" href="#">PUNE<span>AFTER HOURS</span></a>
@@ -56,6 +56,7 @@
             <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
             <button id="map-min" type="button">MIN</button>
             <button id="map-size" type="button">EXPAND</button>
+            <button id="map-recenter" type="button" hidden>RECENTER</button>
           </span>
         </div>
         <canvas
@@ -92,8 +93,8 @@
       </section>
       <section class="controls-bar">
         <div>
-          <kbd>W A S D</kbd> MOVE <kbd>SPACE</kbd> BRAKE <kbd>E</kbd> WALK /
-          DRIVE
+          <kbd>W A S D</kbd> MOVE <kbd>SHIFT</kbd> RUN <kbd>SPACE</kbd> JUMP /
+          BRAKE <kbd>E</kbd> WALK
         </div>
         <div>
           <kbd>C</kbd> CAMERA <kbd>H</kbd> HORN <kbd>T</kbd> TALK
@@ -120,11 +121,13 @@
       <div class="eyebrow">WELCOME TO THE NEIGHBOURHOOD</div>
       <h2>Make yourself at home.</h2>
       <p>
-        WASD or arrow keys to drive or walk. Space brakes. E gets out of the car
-        when stopped; return nearby to get in. C changes the camera. H honks. T
-        speaks with a nearby pedestrian. P pauses. The map can be minimized or
-        expanded, and its checkboxes hide roads, buildings, traffic, people, or
-        places.
+        WASD or arrow keys to drive or walk. Drag the view to look around.
+        Shift runs and Space jumps on foot; Space brakes in the car. E gets out
+        of the car when stopped; return nearby to get in. C changes the camera.
+        H honks. T speaks with a nearby pedestrian. P pauses. The map can be
+        minimized or expanded. Drag the expanded map to move across Kothrud,
+        Deccan, and FC Road, use the wheel to zoom, and RECENTER to follow
+        yourself. Checkboxes hide roads, buildings, traffic, people, or places.
       </p>
       <p>
         Visit the three amber markers on your evening run. Use “Return to
