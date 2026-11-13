@@ -9,15 +9,15 @@ A fetch of `https://www.mapchannels.com/routemaps3/map.htm?units=miles` returned
 | Quantity | What the meshes use | How |
 | --- | --- | --- |
 | Road centerlines | 6,042 driveable ways | Each segment is the carriageway centerline. Paths, steps and footways are not carriageways |
-| Road width | 3 ways with a numeric `width` | That width, in metres. Five other `width` tags sit on paths, steps or footways and are not driven |
-| Lanes | 432 ways | `lanes × 3.5 m` (one urban lane) |
-| Neither width nor lanes | 5,607 ways | Modal tagged lane count for that class, times 3.5 m. Service and living streets use 5 m, the tagged width of the Kothrud living street named "road" |
+| Road width | 3 ways with a numeric `width` | That width, then narrowed to the drivable carriageway below |
+| Lanes | 432 ways | `lanes × 3.5 m`, then narrowed to the drivable carriageway below |
+| Neither width nor lanes | 5,607 ways | Modal tagged lane count for that class, times 3.5 m. Service and living streets use 5 m, the tagged width of the Kothrud living street named "road". Anything wider than the carriageway below is narrowed |
 | Building footprint | 19,850 outlines | Extruded on those vertices. The outline is not replaced with a box |
 | `height` | 57 buildings | That height, clamped to 3–120 m |
 | `building:levels` | 270 buildings, when `height` is absent | `levels × 3 m` |
 | Neither | 19,523 buildings | Median floors of that `building` type, times 3 m |
 
-Modal lanes among tagged ways: primary 2 (108 of 196), secondary 2 (66 of 85), tertiary 2 (57 of 76), trunk 2 (16 of 27), residential 2 (25 of 44). Untagged primary, secondary, tertiary, trunk and residential roads are therefore 7 m. A tagged 3-lane primary is 10.5 m. The one secondary `width=10` stays 10 m.
+Modal lanes among tagged ways: primary 2 (108 of 196), secondary 2 (66 of 85), tertiary 2 (57 of 76), trunk 2 (16 of 27), residential 2 (25 of 44). The survey still reads those as 7 m, a tagged 3-lane primary as 10.5 m, and the one secondary `width=10` as 10 m. The drivable mesh is narrower: one 2.25 m lane each way plus 0.75 m each side for parked bikes, 6 m in all. A surveyed width below 6 m, including service and living streets at 5 m and a tagged single lane at 3.5 m, is left as surveyed.
 
 46 buildings have both `height` and `building:levels`. The median is 3.33 m per level and the lower quartile is 3.00 m. The model uses 3 m so a `building:levels=4` mass is 12 m.
 
@@ -50,7 +50,7 @@ Sampled along named roads. This is the measured gap the sidewalk has to fit insi
 | Karve Road | 847 | 8.22 m | 17.59 m |
 | Paud Road (Kothrud) | 928 | 6.65 m | 18.47 m |
 
-Sidewalk widths are chosen so a 7 m carriageway still clears that p10 wall:
+Sidewalk widths sit outside the drivable carriageway. They were chosen so a 7 m survey carriageway still cleared that p10 wall, and they stay at those widths after the carriageway is narrowed:
 
 - Gokhale Path and Off FC Road: **2.4 m** each side (p10 leaves about 7.1 m outside a 7 m carriageway)
 - Jangli Maharaj Path, Karve Road, Paud Road: **2.2 m**

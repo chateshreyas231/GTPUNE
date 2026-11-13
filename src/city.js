@@ -1,5 +1,10 @@
 import * as THREE from "three";
 export const origin = { lat: 18.5167, lon: 73.841 };
+// One tight lane each way, plus a kerb strip a parked scooter can occupy.
+// Wider survey tags are narrowed to this carriageway before anything drives them.
+export const DRIVE_LANE_METERS = 2.25;
+export const BIKE_PARK_METERS = 0.75;
+export const PUNE_CARRIAGE_METERS = DRIVE_LANE_METERS * 2 + BIKE_PARK_METERS * 2;
 export function project(lat, lon) {
   return [(lon - origin.lon) * 105500, -(lat - origin.lat) * 111320];
 }
@@ -11,14 +16,16 @@ export function fallbackCity() {
         [-850, n],
         [850, n],
       ],
-      width: n === 0 ? 24 : 16,
+      width: PUNE_CARRIAGE_METERS,
+      sidewalk: 1.6,
     });
     roads.push({
       points: [
         [n, -850],
         [n, 850],
       ],
-      width: n === 0 ? 24 : 16,
+      width: PUNE_CARRIAGE_METERS,
+      sidewalk: 1.6,
     });
   }
   const buildings = [];
@@ -106,7 +113,7 @@ export function parseMeters(value) {
   return match ? Number(match[1]) : NaN;
 }
 
-export function roadWidthFromTags(tags = {}) {
+function surveyedRoadWidth(tags = {}) {
   const tagged = parseMeters(tags.width);
   if (tagged >= 1 && tagged <= 40)
     return { width: tagged, widthSource: "width-tag" };
@@ -118,6 +125,17 @@ export function roadWidthFromTags(tags = {}) {
   return {
     width: (CLASS_LANES[tags.highway] ?? 2) * LANE_METERS,
     widthSource: "class-default",
+  };
+}
+
+// The mesh and the traffic use the narrower of the survey and a Pune carriageway:
+// one lane each way plus room for parked bikes. A service street that is already
+// narrower stays at the surveyed width.
+export function roadWidthFromTags(tags = {}) {
+  const surveyed = surveyedRoadWidth(tags);
+  return {
+    width: Math.min(surveyed.width, PUNE_CARRIAGE_METERS),
+    widthSource: surveyed.widthSource,
   };
 }
 
@@ -382,11 +400,20 @@ function gridNear(grid, cell, x, z) {
   return out;
 }
 
-// Original blocks in the holes between surveyed footprints. Each one keeps a
-// narrow gap from its neighbours and stays off the carriageway.
+// Original blocks in the open ground around surveyed footprints. Each one keeps
+// a narrow gap from its neighbours, stays off the carriageway and the sidewalk,
+// and takes the height of the buildings beside it.
+const INFILL_GAP = 0.85;
+const INFILL_MIN_DEPTH = 2.8;
+const INFILL_ROW_DEPTH = 14;
+const INFILL_MAX_ROWS = 2;
+const INFILL_MIN_ALONG = 3.8;
+const INFILL_MAX_ALONG = 16;
+const NEIGHBOR_REACH = 32;
+const PROBE_STEP = 0.4;
+
 export function fillBuildingGaps(buildings, roads) {
   const cell = 28;
-  const gap = 0.85;
   const boxes = [];
   const grid = new Map();
   for (let i = 0; i < buildings.length; i++) {
@@ -399,7 +426,9 @@ export function fillBuildingGaps(buildings, roads) {
   }
   const roadGrid = new Map();
   for (const road of roads || []) {
-    const half = Math.max(1.6, (road.width || 7) / 2);
+    const clearance =
+      Math.max(1.4, (road.width || PUNE_CARRIAGE_METERS) / 2) +
+      (road.sidewalk ?? 1.6);
     const pts = road.points || [];
     for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1],
@@ -407,11 +436,11 @@ export function fillBuildingGaps(buildings, roads) {
       const seg = {
         a,
         b,
-        half,
-        minX: Math.min(a[0], b[0]) - half,
-        maxX: Math.max(a[0], b[0]) + half,
-        minZ: Math.min(a[1], b[1]) - half,
-        maxZ: Math.max(a[1], b[1]) + half,
+        clearance,
+        minX: Math.min(a[0], b[0]) - clearance,
+        maxX: Math.max(a[0], b[0]) + clearance,
+        minZ: Math.min(a[1], b[1]) - clearance,
+        maxZ: Math.max(a[1], b[1]) + clearance,
       };
       coverGrid(roadGrid, cell, seg, seg);
     }
@@ -419,102 +448,218 @@ export function fillBuildingGaps(buildings, roads) {
   const onRoad = (x, z) => {
     for (const seg of gridNear(roadGrid, cell, x, z)) {
       if (x < seg.minX || x > seg.maxX || z < seg.minZ || z > seg.maxZ) continue;
-      if (segmentDistance(x, z, seg.a, seg.b) < seg.half) return true;
+      if (segmentDistance(x, z, seg.a, seg.b) < seg.clearance) return true;
     }
     return false;
   };
   const occupied = (x, z, ignore) => {
     for (const item of gridNear(grid, cell, x, z)) {
       if (item === ignore) continue;
-      if (x < item.minX || x > item.maxX || z < item.minZ || z > item.maxZ) continue;
+      if (
+        x < item.minX - 0.05 ||
+        x > item.maxX + 0.05 ||
+        z < item.minZ - 0.05 ||
+        z > item.maxZ + 0.05
+      )
+        continue;
       if (inside(x, z, item.building.points)) return item;
     }
     return null;
   };
+  const nearestNeighbor = (item) => {
+    const x0 = Math.floor((item.minX - NEIGHBOR_REACH) / cell),
+      x1 = Math.floor((item.maxX + NEIGHBOR_REACH) / cell),
+      z0 = Math.floor((item.minZ - NEIGHBOR_REACH) / cell),
+      z1 = Math.floor((item.maxZ + NEIGHBOR_REACH) / cell);
+    let best = null,
+      bestD = NEIGHBOR_REACH;
+    const seen = new Set();
+    for (let x = x0; x <= x1; x++)
+      for (let z = z0; z <= z1; z++) {
+        const list = grid.get(`${x}:${z}`);
+        if (!list) continue;
+        for (const other of list) {
+          if (other === item || other.i < 0 || seen.has(other)) continue;
+          seen.add(other);
+          const dx =
+              item.minX > other.maxX
+                ? item.minX - other.maxX
+                : other.minX > item.maxX
+                  ? other.minX - item.maxX
+                  : 0,
+            dz =
+              item.minZ > other.maxZ
+                ? item.minZ - other.maxZ
+                : other.minZ > item.maxZ
+                  ? other.minZ - item.maxZ
+                  : 0,
+            dist = Math.hypot(dx, dz);
+          if (dist < bestD) {
+            bestD = dist;
+            best = other;
+          }
+        }
+      }
+    return best;
+  };
   const infill = [];
   const used = new Set();
-  const made = new Map();
-  for (const item of boxes) {
-    if ((made.get(item.i) || 0) >= 2) continue;
-    const points = item.building.points;
-    const closed =
-      points.length > 3 &&
-      Math.hypot(points[0][0] - points.at(-1)[0], points[0][1] - points.at(-1)[1]) < 0.05;
-    const n = closed ? points.length - 1 : points.length;
-    for (let i = 0; i < n && (made.get(item.i) || 0) < 2; i++) {
-      const p0 = points[i],
-        p1 = points[(i + 1) % n];
-      const dx = p1[0] - p0[0],
-        dz = p1[1] - p0[1],
-        len = Math.hypot(dx, dz);
-      if (len < 4.5 || len > 80) continue;
-      const mx = (p0[0] + p1[0]) / 2,
-        mz = (p0[1] + p1[1]) / 2;
-      let nx = -dz / len,
-        nz = dx / len;
-      if (inside(mx + nx * 0.6, mz + nz * 0.6, points)) {
-        nx = -nx;
-        nz = -nz;
+  for (const item of boxes) item.neighbor = nearestNeighbor(item);
+  const blockedAt = (x, z, nx, nz, d, ignore) => {
+    const px = x + nx * d,
+      pz = z + nz * d;
+    if (onRoad(px, pz)) return "road";
+    const occ = occupied(px, pz, ignore);
+    if (occ) return occ;
+    return null;
+  };
+  const probe = (x, z, nx, nz, ignore) => {
+    const coarse = [1.2, 3.2, 6, 10, 16, 24, 34];
+    let prev = PROBE_STEP,
+      limit = null;
+    for (const d of coarse) {
+      if (blockedAt(x, z, nx, nz, d, ignore)) {
+        limit = d;
+        break;
       }
-      if (onRoad(mx + nx * 1.4, mz + nz * 1.4)) continue;
-      let clear = 1.1;
-      let neighbor = null;
-      for (const d of [3.2, 6, 9, 12, 15]) {
-        const x = mx + nx * d,
-          z = mz + nz * d;
-        if (onRoad(x, z)) break;
-        const hit = occupied(x, z, item);
-        if (hit) {
-          neighbor = hit;
-          break;
-        }
-        clear = d;
+      prev = d;
+    }
+    if (limit == null) return { roadAt: Infinity, buildingAt: Infinity, hit: null };
+    let roadAt = Infinity,
+      buildingAt = Infinity,
+      hit = null;
+    for (let d = prev; d <= limit + 0.01; d += PROBE_STEP) {
+      const block = blockedAt(x, z, nx, nz, d, ignore);
+      if (block === "road") {
+        roadAt = d;
+        break;
       }
-      if (!neighbor || clear < 3.4 || clear > 14) continue;
-      const outer = clear - 0.45;
-      const inner = gap;
-      if (outer - inner < 2.3) continue;
-      const depth = outer - inner;
-      const along = Math.min(len - 1.4, 11);
-      if (along < 3.6) continue;
-      const cx = mx + nx * (inner + depth / 2);
-      const cz = mz + nz * (inner + depth / 2);
-      const key = `${Math.round(cx / 4)}:${Math.round(cz / 4)}`;
-      if (used.has(key)) continue;
-      const hx = (dx / len) * (along / 2),
-        hz = (dz / len) * (along / 2),
+      if (block && block !== "road") {
+        buildingAt = d;
+        hit = block;
+        break;
+      }
+    }
+    return { roadAt, buildingAt, hit };
+  };
+  const commit = (footprint, height) => {
+    let sx = 0,
+      sz = 0;
+    for (const p of footprint) {
+      sx += p[0];
+      sz += p[1];
+    }
+    const key = `${Math.round(sx / footprint.length / 3)}:${Math.round(sz / footprint.length / 3)}`;
+    if (used.has(key)) return false;
+    const samples = footprint.slice();
+    samples.push([sx / footprint.length, sz / footprint.length]);
+    for (let i = 0; i < footprint.length; i++) {
+      const a = footprint[i],
+        b = footprint[(i + 1) % footprint.length];
+      samples.push([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+    }
+    if (samples.some(([x, z]) => onRoad(x, z) || occupied(x, z, null))) return false;
+    const extra = {
+      points: footprint,
+      height,
+      floors: Math.max(1, Math.round(height / STOREY_METERS)),
+      heightSource: "infill",
+      kind: "yes",
+      color: ((infill.length * 17) % 100) / 100,
+      infill: true,
+    };
+    const bounds = footprintBounds(footprint);
+    coverGrid(grid, cell, bounds, {
+      ...bounds,
+      building: extra,
+      i: -1 - infill.length,
+    });
+    used.add(key);
+    infill.push(extra);
+    return true;
+  };
+  const placeRows = (ax, az, dx, dz, len, nx, nz, span, buildable, height) => {
+    let inner = INFILL_GAP,
+      rows = 0,
+      placed = 0;
+    while (rows < INFILL_MAX_ROWS && buildable - inner >= INFILL_MIN_DEPTH) {
+      const depth = Math.min(INFILL_ROW_DEPTH, buildable - inner);
+      const hx = (dx / len) * (span / 2),
+        hz = (dz / len) * (span / 2),
         px = nx * (depth / 2),
-        pz = nz * (depth / 2);
+        pz = nz * (depth / 2),
+        cx = ax + nx * (inner + depth / 2),
+        cz = az + nz * (inner + depth / 2);
       const footprint = [
         [cx - hx - px, cz - hz - pz],
         [cx + hx - px, cz + hz - pz],
         [cx + hx + px, cz + hz + pz],
         [cx - hx + px, cz - hz + pz],
       ];
-      if (footprint.some(([x, z]) => onRoad(x, z) || occupied(x, z, null))) continue;
-      if (onRoad(cx, cz) || occupied(cx, cz, null)) continue;
-      const height = Math.min(
-        36,
-        Math.max(
-          3,
-          ((item.building.height || 9) + (neighbor.building.height || 9)) / 2,
-        ),
-      );
-      const extra = {
-        points: footprint,
-        height,
-        floors: Math.max(1, Math.round(height / STOREY_METERS)),
-        heightSource: "infill",
-        kind: "yes",
-        color: ((infill.length * 17) % 100) / 100,
-        infill: true,
-      };
-      const bounds = footprintBounds(footprint);
-      const stored = { ...bounds, building: extra, i: -1 - infill.length };
-      coverGrid(grid, cell, bounds, stored);
-      used.add(key);
-      made.set(item.i, (made.get(item.i) || 0) + 1);
-      infill.push(extra);
+      if (commit(footprint, height)) placed++;
+      else if (span > INFILL_MIN_ALONG + 1) {
+        const shorter = Math.max(INFILL_MIN_ALONG, span * 0.55);
+        if (shorter < span - 0.4)
+          placed += placeRows(ax, az, dx, dz, len, nx, nz, shorter, buildable, height)
+            ? 1
+            : 0;
+        break;
+      } else break;
+      inner += depth + INFILL_GAP;
+      rows++;
+    }
+    return placed;
+  };
+  for (const item of boxes) {
+    const neighbor = item.neighbor;
+    if (!neighbor) continue;
+    const points = item.building.points;
+    const closed =
+      points.length > 3 &&
+      Math.hypot(points[0][0] - points.at(-1)[0], points[0][1] - points.at(-1)[1]) <
+        0.05;
+    const n = closed ? points.length - 1 : points.length;
+    for (let i = 0; i < n; i++) {
+      const p0 = points[i],
+        p1 = points[(i + 1) % n];
+      const dx = p1[0] - p0[0],
+        dz = p1[1] - p0[1],
+        len = Math.hypot(dx, dz);
+      if (len < INFILL_MIN_ALONG) continue;
+      let nx = -dz / len,
+        nz = dx / len;
+      const mx = (p0[0] + p1[0]) / 2,
+        mz = (p0[1] + p1[1]) / 2;
+      if (inside(mx + nx * 0.6, mz + nz * 0.6, points)) {
+        nx = -nx;
+        nz = -nz;
+      }
+      let cursor = 0.55;
+      while (cursor + INFILL_MIN_ALONG <= len - 0.4) {
+        const span = Math.min(INFILL_MAX_ALONG, len - 0.4 - cursor);
+        const u = cursor + span / 2,
+          ax = p0[0] + (dx / len) * u,
+          az = p0[1] + (dz / len) * u;
+        const seen = probe(ax, az, nx, nz, item);
+        let buildable;
+        let other = neighbor.building;
+        if (seen.buildingAt < seen.roadAt) {
+          other = seen.hit?.building || other;
+          buildable = seen.buildingAt - PROBE_STEP - INFILL_GAP;
+        } else if (Number.isFinite(seen.roadAt)) {
+          buildable = seen.roadAt - PROBE_STEP;
+        } else {
+          buildable = INFILL_GAP + INFILL_MAX_ROWS * (INFILL_ROW_DEPTH + INFILL_GAP);
+        }
+        if (buildable - INFILL_GAP >= INFILL_MIN_DEPTH) {
+          const height = Math.min(
+            36,
+            Math.max(3, ((item.building.height || 9) + (other.height || 9)) / 2),
+          );
+          placeRows(ax, az, dx, dz, len, nx, nz, span, buildable, height);
+        }
+        cursor += span + INFILL_GAP;
+      }
     }
   }
   return infill;
