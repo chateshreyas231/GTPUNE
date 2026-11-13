@@ -11,8 +11,22 @@ import {
   segmentDistance,
   inside,
   makeCar,
+  makeVehicle,
+  vehicleSpec,
   person,
   origin,
+  roadTitle,
+  roadUnder,
+  buildingLook,
+  PLASTER,
+  GLASS_PLASTER,
+  frontageName,
+  isShopFront,
+  mapPlaces,
+  rollVehicle,
+  mulberry32,
+  nodeKey,
+  SHOP_BOARDS,
 } from "./city.js";
 const $ = (id) => document.getElementById(id);
 let city = fallbackCity();
@@ -106,7 +120,15 @@ for (const road of city.roads)
     const angle = Math.atan2(dx, dz),
       x = (a[0] + b[0]) / 2,
       z = (a[1] + b[1]) / 2;
-    roadSegments.push({ a, b, width: road.width, length, angle });
+    roadSegments.push({
+      a,
+      b,
+      width: road.width,
+      length,
+      angle,
+      name: road.name || "",
+      altName: road.altName || "",
+    });
   }
 const roadGroup = new THREE.Group();
 scene.add(roadGroup);
@@ -147,30 +169,23 @@ function renderRoads(cx, cz) {
   mergeStatic(roadGroup);
 }
 
-function facade() {
+function facade(base, glass) {
   const c = document.createElement("canvas");
   c.width = 512;
   c.height = 512;
   const ctx = c.getContext("2d");
-  ctx.fillStyle = "#c7bc9e";
+  ctx.fillStyle = base;
   ctx.fillRect(0, 0, 512, 512);
-  if (surfacePhotos.plaster)
-    ctx.drawImage(surfacePhotos.plaster.image, 0, 0, 512, 512);
-  for (let y = 12; y < 512; y += 128) {
-    ctx.fillStyle = "#afa38b";
-    ctx.fillRect(0, y + 107, 512, 6);
-    for (let x = 20; x < 512; x += 128) {
-      ctx.fillStyle = "#302f2c";
-      ctx.fillRect(x - 5, y - 5, 76, 91);
-      ctx.fillStyle = "#637e82";
-      ctx.fillRect(x, y, 66, 78);
-      ctx.fillStyle = "#a7b5ac";
-      ctx.fillRect(x + 5, y + 3, 24, 68);
-      ctx.fillStyle = "#bcb8a4";
-      ctx.fillRect(x + 31, y, 3, 78);
-      ctx.fillRect(x, y + 38, 66, 3);
-      ctx.fillStyle = "#827b6a";
-      ctx.fillRect(x - 8, y + 80, 82, 10);
+  for (let y = 18; y < 512; y += 128) {
+    ctx.fillStyle = "rgba(0,0,0,0.08)";
+    ctx.fillRect(0, y + 102, 512, 8);
+    for (let x = 24; x < 512; x += 128) {
+      ctx.fillStyle = "#243033";
+      ctx.fillRect(x - 4, y - 4, 72, 88);
+      ctx.fillStyle = glass;
+      ctx.fillRect(x, y, 64, 78);
+      ctx.fillStyle = "rgba(255,255,255,0.28)";
+      ctx.fillRect(x + 4, y + 4, 22, 66);
     }
   }
   const tex = new THREE.CanvasTexture(c);
@@ -178,11 +193,24 @@ function facade() {
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   return tex;
 }
-const facadeTex = facade();
-const palette = [0xc9bd9f, 0xd6c5ad, 0xb7b8ac, 0xb8c1b0, 0xd1b29a];
-const buildingMats = palette.map(
-  (c) =>
-    new THREE.MeshStandardMaterial({ color: c, map: facadeTex, roughness: 1 }),
+const plasterTex = facade("#f6f3ec", "#7f96a0");
+const glassTex = facade("#d7e4ea", "#8eb6c8");
+const plasterMats = new Map(
+  [...Object.values(PLASTER), GLASS_PLASTER].map((hex) => [
+    hex,
+    new THREE.MeshStandardMaterial({
+      color: hex,
+      map: hex === GLASS_PLASTER ? glassTex : plasterTex,
+      roughness: hex === GLASS_PLASTER ? 0.22 : 0.94,
+      metalness: hex === GLASS_PLASTER ? 0.55 : 0.02,
+    }),
+  ]),
+);
+const bandMats = new Map(
+  [0x7c2f3b, 0x1f6b4a, 0x1d4f88, 0xc4892b].map((hex) => [
+    hex,
+    new THREE.MeshStandardMaterial({ color: hex, roughness: 0.78 }),
+  ]),
 );
 const roofMat = material(0x9b9b8b);
 const obstacles = city.buildings.map((b) => {
@@ -198,8 +226,99 @@ const obstacles = city.buildings.map((b) => {
 });
 const buildingGroup = new THREE.Group();
 scene.add(buildingGroup);
+const signGroup = new THREE.Group();
+scene.add(signGroup);
+const places = mapPlaces(city.buildings);
+const signTextures = new Map();
+const BAND_CSS = {
+  0x7c2f3b: "#7c2f3b",
+  0x1f6b4a: "#1f6b4a",
+  0x1d4f88: "#1d4f88",
+  0xc4892b: "#c4892b",
+};
 let buildingCenter = new THREE.Vector2(Infinity, Infinity);
+let signCenter = new THREE.Vector2(Infinity, Infinity);
 let detailGroup;
+function boardTexture(text, css) {
+  const key = css + ":" + text;
+  if (signTextures.has(key)) return signTextures.get(key);
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 128;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = css;
+  ctx.fillRect(0, 0, 512, 128);
+  ctx.fillStyle = "#f8f1df";
+  ctx.font = "bold 44px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text.length > 22 ? text.slice(0, 21) + "…" : text, 256, 66);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  signTextures.set(key, tex);
+  return tex;
+}
+function extrudeFootprint(points, height) {
+  const shape = new THREE.Shape();
+  shape.moveTo(points[0][0], -points[0][1]);
+  for (const pt of points.slice(1)) shape.lineTo(pt[0], -pt[1]);
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
+  geo.rotateX(-Math.PI / 2);
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 10, uv.getY(i) / 12);
+  return geo;
+}
+function shopSpot(b) {
+  const x = (b.minX + b.maxX) / 2, z = (b.minZ + b.maxZ) / 2;
+  let best = null, bestD = 36;
+  for (const r of roadSegments) {
+    if (Math.abs(r.a[0] - x) > 90 && Math.abs(r.b[0] - x) > 90) continue;
+    if (Math.abs(r.a[1] - z) > 90 && Math.abs(r.b[1] - z) > 90) continue;
+    const dist = segmentDistance(x, z, r.a, r.b);
+    if (dist < bestD) { bestD = dist; best = r; }
+  }
+  if (!best) return null;
+  const dx = best.b[0] - best.a[0], dz = best.b[1] - best.a[1], len2 = dx * dx + dz * dz || 1;
+  const t = Math.max(0, Math.min(1, ((x - best.a[0]) * dx + (z - best.a[1]) * dz) / len2));
+  const qx = best.a[0] + dx * t, qz = best.a[1] + dz * t;
+  const vx = x - qx, vz = z - qz, vlen = Math.hypot(vx, vz) || 1;
+  const edge = best.width / 2 + 1.6;
+  return { x: qx + (vx / vlen) * edge, z: qz + (vz / vlen) * edge, angle: best.angle };
+}
+function refreshSigns(cx, cz) {
+  for (const mesh of [...signGroup.children]) {
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+    signGroup.remove(mesh);
+  }
+  const near = [];
+  for (const b of obstacles) {
+    const dist = Math.hypot((b.minX + b.maxX) / 2 - cx, (b.minZ + b.maxZ) / 2 - cz);
+    if (dist > 140) continue;
+    const named = Boolean(b.name);
+    if (!named && !isShopFront(b)) continue;
+    let score = dist / 40;
+    if (b.shop === "mall" || /mall|college|hospital/i.test(b.name || "")) score -= 8;
+    else if (named) score -= 3;
+    near.push({ b, score, label: named ? b.name : frontageName(b) });
+  }
+  near.sort((a, c) => a.score - c.score);
+  for (const item of near.slice(0, 18)) {
+    const spot = shopSpot(item.b);
+    if (!spot) continue;
+    const look = buildingLook(item.b);
+    const tex = boardTexture(item.label, BAND_CSS[look.band] || "#7c2f3b");
+    const width = Math.min(16, 4 + item.label.length * 0.42);
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, width / 4),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, side: THREE.DoubleSide }),
+    );
+    mesh.position.set(spot.x, 2.4, spot.z);
+    mesh.rotation.y = spot.angle;
+    signGroup.add(mesh);
+  }
+  signCenter.set(cx, cz);
+}
 function renderBuildings(cx, cz) {
   for (const mesh of [...buildingGroup.children]) {
     mesh.geometry.dispose();
@@ -213,27 +332,23 @@ function renderBuildings(cx, cz) {
     )
       continue;
     if (b.points.length < 3) continue;
-    const shape = new THREE.Shape();
-    shape.moveTo(b.points[0][0], -b.points[0][1]);
-    for (const p of b.points.slice(1)) shape.lineTo(p[0], -p[1]);
-    shape.closePath();
-    const geo = new THREE.ExtrudeGeometry(shape, {
-      depth: b.height,
-      bevelEnabled: false,
-    });
-    geo.rotateX(-Math.PI / 2);
-    const uv = geo.attributes.uv;
-    for (let i = 0; i < uv.count; i++)
-      uv.setXY(i, uv.getX(i) / 10, uv.getY(i) / 12);
-    const m = new THREE.Mesh(geo, [
-      roofMat,
-      buildingMats[Math.floor(b.color * 5) % 5],
-    ]);
-    m.castShadow = true;
-    m.receiveShadow = true;
-    buildingGroup.add(m);
+    const look = buildingLook(b);
+    const bandH = Math.min(3.3, Math.max(2.2, b.height * 0.34));
+    const upperH = Math.max(0.6, b.height - bandH);
+    const upperMat = plasterMats.get(look.plaster) || plasterMats.get(GLASS_PLASTER);
+    const bandMat = bandMats.get(look.band);
+    const upper = new THREE.Mesh(extrudeFootprint(b.points, upperH), [roofMat, upperMat]);
+    upper.position.y = bandH;
+    upper.castShadow = true;
+    upper.receiveShadow = true;
+    buildingGroup.add(upper);
+    const band = new THREE.Mesh(extrudeFootprint(b.points, bandH), [bandMat, bandMat]);
+    band.castShadow = true;
+    band.receiveShadow = true;
+    buildingGroup.add(band);
   }
   mergeStatic(buildingGroup);
+  refreshSigns(cx, cz);
   if (detailGroup) {
     scene.remove(detailGroup);
     detailGroup.traverse((o) => {
@@ -272,13 +387,7 @@ function sign(text, x, z, angle = 0) {
   scene.add(m);
   box(0.25, 5, 0.25, mats.trunk, x, 2.5, z);
 }
-const shopNames = [
-  "अमृततुल्य · CHAI",
-  "पुणेरी मिसळ",
-  "पुस्तक भांडार",
-  "नमस्कार पुणे",
-  "BAKERY & CAFÉ",
-];
+const shopNames = SHOP_BOARDS.slice(0, 9).map((board) => board.name);
 const treeGeo = new THREE.IcosahedronGeometry(1, 1);
 for (
   let i = 0;
@@ -433,7 +542,6 @@ for (let i = 0; i < 72; i++) {
 // Put a resident within conversational reach of the starting point.
 pedestrians[0].start.set(city.spawn[0] + 5, 0, city.spawn[1] - 5);
 const adjacency = new Map();
-const nodeKey = (p) => p.map((v) => v.toFixed(1)).join(",");
 for (const r of roadSegments)
   for (const end of [r.a, r.b]) {
     const key = nodeKey(end);
@@ -444,20 +552,37 @@ const traffic = [];
 const driveable = roadSegments.filter((r) => r.length > 45);
 const trafficRoads = driveable.length ? driveable : roadSegments;
 const trafficTarget = Math.min(96, Math.max(48, trafficRoads.length));
+function vehicleRadius(kind) {
+  if (kind === "bus") return 4.4;
+  if (kind === "bike") return 1.2;
+  if (kind === "auto") return 1.9;
+  return 2.3;
+}
+function vehiclePoint(t) {
+  const r = t.segment, len = r.length || 1;
+  const dx = (r.b[0] - r.a[0]) / len, dz = (r.b[1] - r.a[1]) / len;
+  const side = t.kind === "bus" ? 0.12 : t.kind === "bike" ? 0.34 : t.kind === "auto" ? 0.26 : 0.2;
+  return {
+    x: r.a[0] + (r.b[0] - r.a[0]) * t.s + dz * r.width * side * t.direction,
+    z: r.a[1] + (r.b[1] - r.a[1]) * t.s - dx * r.width * side * t.direction,
+    angle: r.angle + (t.direction === 1 ? Math.PI : 0),
+  };
+}
 for (let i = 0; i < trafficTarget; i++) {
+  const spec = vehicleSpec(i);
   const r = trafficRoads[(i * 97) % trafficRoads.length];
-  const m = makeCar(
-    [0xa7b7b3, 0xe3dac4, 0x678e92, 0xa4523f, 0xd7c4a2, 0x6e8b74][i % 6],
-    i % 5 === 0,
-  );
-  scene.add(m);
-  traffic.push({
-    mesh: m,
-    road: r,
-    t: (i * 0.137) % 1,
-    direction: i % 2 ? 1 : -1,
-    speed: 6.5 + (i % 7) * 1.15,
-  });
+  const mesh = makeVehicle(spec);
+  const actorState = {
+    mesh, segment: r, s: (i * 0.137) % 1, direction: i % 2 ? 1 : -1,
+    speed: spec.kind === "bike" ? 11 : spec.kind === "bus" ? 7 : spec.kind === "auto" ? 8 : 9,
+    kind: spec.kind, label: spec.label, board: spec.board, livery: spec.livery, route: spec.route,
+    goal: null, trip: null, cursor: 0, rng: mulberry32(4000 + i * 17), minLength: 90, minGoal: 160,
+  };
+  const spot = vehiclePoint(actorState);
+  mesh.position.set(spot.x, 0, spot.z);
+  mesh.rotation.y = spot.angle;
+  scene.add(mesh);
+  traffic.push(actorState);
 }
 let detailedHumans = 0;
 hydrateResidents([
@@ -558,10 +683,10 @@ function honk() {
 let talkIndex = 0,
   dialogueTimer;
 function talk() {
-  const nearby = pedestrians.some(
+  const nearbyPed = pedestrians.find(
     (p) => p.mesh.position.distanceTo(actor().position) < 22,
   );
-  if (!nearby) {
+  if (!nearbyPed) {
     toast("Get within 22 metres of a pedestrian to talk.");
     return;
   }
@@ -570,7 +695,8 @@ function talk() {
     text = lines[lang][clipIndex];
   $("dialogue").replaceChildren();
   const label = document.createElement("small");
-  label.textContent = "NEIGHBOUR · शेजारी";
+  const who = nearbyPed.mesh.userData;
+  label.textContent = `${who.name || "NEIGHBOUR"} · ${who.role || "शेजारी"}`;
   $("dialogue").append(label, document.createTextNode(text));
   $("dialogue").hidden = false;
   clearTimeout(dialogueTimer);
@@ -910,17 +1036,52 @@ function drawMap() {
       );
       map.stroke();
     }
+    const usedLabels = [];
+    for (const r of city.roads) {
+      const title = roadTitle(r);
+      if (!title || r.points.length < 2) continue;
+      let best = null, bestPx = 0;
+      for (let i = 1; i < r.points.length; i++) {
+        const a = r.points[i - 1], b = r.points[i];
+        const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+        if (Math.abs(mx - pos.x) > reach || Math.abs(mz - pos.z) > reach) continue;
+        const px = Math.hypot(sx(b[0]) - sx(a[0]), sy(b[1]) - sy(a[1]));
+        if (px > bestPx) { bestPx = px; best = [a, b]; }
+      }
+      if (!best || bestPx < 70) continue;
+      const lx = sx((best[0][0] + best[1][0]) / 2), ly = sy((best[0][1] + best[1][1]) / 2);
+      if (usedLabels.some((item) => item.title === title && Math.hypot(item.x - lx, item.y - ly) < 110)) continue;
+      usedLabels.push({ title, x: lx, y: ly });
+      let angle = Math.atan2(sy(best[1][1]) - sy(best[0][1]), sx(best[1][0]) - sx(best[0][0]));
+      if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
+      map.save();
+      map.translate(lx, ly);
+      map.rotate(angle);
+      map.fillStyle = "#e7f6ee";
+      map.font = `${Math.max(11, Math.min(16, w / 46))}px sans-serif`;
+      map.textAlign = "center";
+      map.fillText(title, 0, -4);
+      map.restore();
+    }
   }
   if (mapLayers.traffic) {
-    map.fillStyle = "#f4f7f2";
     for (const t of traffic) {
-      const x = t.mesh.position.x;
-      const z = t.mesh.position.z;
+      const x = t.mesh.position.x, z = t.mesh.position.z;
       if (!visible(x, z)) continue;
+      const kind = t.kind || "car";
+      map.fillStyle = kind === "auto" ? "#f0c31a" : kind === "bike" ? "#49b6d6" : kind === "bus" ? (t.livery === "purple" ? "#7a5aaa" : "#d24b58") : "#f4f7f2";
+      const rw = kind === "bus" ? 11 : kind === "bike" ? 4 : kind === "auto" ? 6 : 7;
+      const rh = kind === "bus" ? 4.2 : kind === "bike" ? 2.2 : 3.4;
       map.save();
       map.translate(sx(x), sy(z));
       map.rotate(-t.mesh.rotation.y);
-      map.fillRect(-3.5, -2, 7, 4);
+      map.fillRect(-rw / 2, -rh / 2, rw, rh);
+      if (mapSize === "max" && kind === "bus") {
+        map.fillStyle = "#10211c";
+        map.font = "9px sans-serif";
+        map.textAlign = "center";
+        map.fillText(t.board || "Bus", 0, 12);
+      }
       map.restore();
     }
   }
@@ -933,13 +1094,23 @@ function drawMap() {
   }
   if (mapLayers.people) {
     map.fillStyle = "#7dcea0";
+    const namedPeople = [];
     for (const person of pedestrians) {
-      const x = person.mesh.position.x;
-      const z = person.mesh.position.z;
+      const x = person.mesh.position.x, z = person.mesh.position.z;
       if (!visible(x, z)) continue;
       map.beginPath();
       map.arc(sx(x), sy(z), 2.4, 0, Math.PI * 2);
       map.fill();
+      const d = Math.hypot(x - pos.x, z - pos.z);
+      if (d < 80) namedPeople.push({ person, d, x, z });
+    }
+    namedPeople.sort((a, b) => a.d - b.d);
+    map.fillStyle = "#f6f3e6";
+    map.font = `${Math.max(10, w / 58)}px sans-serif`;
+    map.textAlign = "left";
+    for (const item of namedPeople.slice(0, 8)) {
+      const label = item.person.mesh.userData.label || item.person.mesh.userData.name;
+      if (label) map.fillText(label, sx(item.x) + 5, sy(item.z) - 4);
     }
   }
   if (mapLayers.places) {
@@ -952,9 +1123,30 @@ function drawMap() {
       if (mapSize === "max" || current) {
         map.fillStyle = "#f6f3e6";
         map.font = `${Math.max(11, w / 48)}px sans-serif`;
+        map.textAlign = "left";
         map.fillText(stop.name, sx(stop.point[0]) + 8, sy(stop.point[1]) - 6);
       }
     });
+    const visiblePlaces = [];
+    for (const place of places) {
+      if (!visible(place.point[0], place.point[1])) continue;
+      visiblePlaces.push({
+        place,
+        d: Math.hypot(place.point[0] - pos.x, place.point[1] - pos.z),
+      });
+    }
+    visiblePlaces.sort((a, b) => Number(b.place.named) - Number(a.place.named) || a.d - b.d);
+    for (const item of visiblePlaces.slice(0, 40)) {
+      map.fillStyle = item.place.named ? "#edbd6d" : "#d98b4a";
+      map.beginPath();
+      map.arc(sx(item.place.point[0]), sy(item.place.point[1]), item.place.named ? 3.5 : 2.2, 0, Math.PI * 2);
+      map.fill();
+    }
+    map.fillStyle = "#f6f3e6";
+    map.font = `${Math.max(10, w / 55)}px sans-serif`;
+    map.textAlign = "left";
+    for (const item of visiblePlaces.slice(0, mapSize === "max" ? 16 : 8))
+      map.fillText(item.place.name, sx(item.place.point[0]) + 6, sy(item.place.point[1]) - 4);
   }
   map.fillStyle = "rgba(246, 243, 230, 0.85)";
   map.font = `${Math.max(12, w / 40)}px sans-serif`;
@@ -1028,43 +1220,22 @@ function animate() {
       toast("You reached the edge of this city patch.");
     }
     for (const t of traffic) {
-      const old = t.t,
-        oldRoad = t.road,
-        oldDirection = t.direction;
-      t.t += (dt * (t.speed || 8)) / t.road.length;
-      if (t.t > 1) {
-        const endpoint = t.direction === 1 ? t.road.b : t.road.a;
-        const exits = (adjacency.get(nodeKey(endpoint)) || []).filter(
-          (r) => r !== t.road,
-        );
-        if (exits.length) {
-          t.road = exits[Math.floor(elapsed + t.mesh.id) % exits.length];
-          t.direction = nodeKey(t.road.a) === nodeKey(endpoint) ? 1 : -1;
-        } else t.direction *= -1;
-        t.t = 0;
-      }
-      const r = t.road,
-        dx = (r.b[0] - r.a[0]) / r.length,
-        dz = (r.b[1] - r.a[1]) / r.length,
-        f = t.direction === 1 ? t.t : 1 - t.t;
-      const x = r.a[0] + dx * r.length * f + dz * r.width * 0.22 * t.direction,
-        z = r.a[1] + dz * r.length * f - dx * r.width * 0.22 * t.direction;
+      const next = rollVehicle(t, dt, adjacency, trafficRoads, t.rng);
+      const spot = vehiclePoint(next);
+      const gap = vehicleRadius(t.kind);
       if (
-        Math.hypot(x - p.x, z - p.z) < 7 ||
+        Math.hypot(spot.x - p.x, spot.z - p.z) < gap + (walking ? 1.2 : 2.2) ||
         traffic.some(
           (other) =>
             other !== t &&
-            Math.hypot(x - other.mesh.position.x, z - other.mesh.position.z) <
-              4.5,
+            Math.hypot(spot.x - other.mesh.position.x, spot.z - other.mesh.position.z) <
+              gap + vehicleRadius(other.kind),
         )
-      ) {
-        t.t = old;
-        t.road = oldRoad;
-        t.direction = oldDirection;
+      )
         continue;
-      }
-      t.mesh.position.set(x, 0, z);
-      t.mesh.rotation.y = r.angle + (t.direction === 1 ? Math.PI : 0);
+      Object.assign(t, next);
+      t.mesh.position.set(spot.x, 0, spot.z);
+      t.mesh.rotation.y = spot.angle;
     }
     for (const p of pedestrians) {
       p.mesh.position.copy(p.start);
@@ -1194,10 +1365,19 @@ function animate() {
         ? a
         : b,
     );
-    $("district").textContent = nearest.name;
+    const roadName = roadUnder(p.x, p.z, roadSegments);
+    $("district").textContent = roadName || nearest.name;
+    let closePerson = null, closeD = 14;
+    for (const ped of pedestrians) {
+      const d = Math.hypot(p.x - ped.mesh.position.x, p.z - ped.mesh.position.z);
+      if (d < closeD) { closeD = d; closePerson = ped; }
+    }
+    $("nearby").textContent = closePerson
+      ? `${closePerson.mesh.userData.name || "Neighbour"} · ${closePerson.mesh.userData.role || "neighbour"}`
+      : "";
+    if (Math.hypot(p.x - signCenter.x, p.z - signCenter.y) > 40) refreshSigns(p.x, p.z);
     if (city.source === "OpenStreetMap")
-      document.querySelector(".location small").textContent =
-        `${(origin.lat - p.z / 111320).toFixed(4)}° N · ${(origin.lon + p.x / 105500).toFixed(4)}° E`;
+      $("coords").textContent = `${(origin.lat - p.z / 111320).toFixed(4)}° N · ${(origin.lon + p.x / 105500).toFixed(4)}° E`;
   }
   renderer.render(scene, camera);
 }
@@ -1234,6 +1414,13 @@ window.__pune = {
       wallet,
       voiceLocale: $("language").value,
       nearbyBuildingBatches: buildingGroup.children.length,
+      roadName: $("district").textContent,
+      nearbyPerson: $("nearby").textContent,
+      vehicleKinds: [...new Set(traffic.map((t) => t.kind))],
+      buses: traffic.filter((t) => t.kind === "bus").length,
+      autos: traffic.filter((t) => t.kind === "auto").length,
+      bikes: traffic.filter((t) => t.kind === "bike").length,
+      places: places.length,
     };
   },
 };
