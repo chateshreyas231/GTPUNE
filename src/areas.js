@@ -1,4 +1,4 @@
-/** GTPUNE serves these Pune neighbourhoods only. */
+/** GTPUNE's neighbourhoods. Chapter 1 is FC Road; the other two stay locked. */
 export const serviceArea = {
   product: "GTPUNE",
   city: "Pune",
