@@ -425,6 +425,7 @@ kbd {
   gap: 12px;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   margin-top: 8px;
 }
 .settings button,
