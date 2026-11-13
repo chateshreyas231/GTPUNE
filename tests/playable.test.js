@@ -1,4 +1,5 @@
 import test from "node:test";
+import { NORMAL_CARS, SUPERCARS } from "../src/vehicle-assets.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as THREE from "three";
@@ -57,6 +58,17 @@ const ALLOWED = new Set([
   "Sahyadri SUV",
   "Deccan Muscle",
   "Sunset Cabrio",
+  "Pune Electric",
+  "Deccan Coupe",
+  "Pune Classic",
+  "Ghat Roadster",
+  "City Hatch",
+  "Green City Bus",
+  "State Express Coach",
+  "Red State Bus",
+  "Police Transport",
+  "Police Patrol SUV",
+  "Police Classic Jeep",
 ]);
 
 function crossRoads() {
@@ -151,7 +163,8 @@ test("two-wheelers outnumber cars and each body is its own mesh and tone", () =>
   assert.ok(bikes.every((body) => BIKE_BODIES.includes(body)));
   assert.ok(cars.every((body) => CAR_BODIES.includes(body)));
   assert.ok(new Set(bikes).size === BIKE_BODIES.length);
-  assert.ok(new Set(cars).size === CAR_BODIES.length);
+  assert.equal(cars.filter(id=>NORMAL_CARS[id]).length,10);
+  assert.equal(cars.filter(id=>SUPERCARS[id]).length,2);
   const named = (root, name) => {
     let found = null;
     root.traverse((child) => {
@@ -160,9 +173,7 @@ test("two-wheelers outnumber cars and each body is its own mesh and tone", () =>
     return found;
   };
   for (const body of CAR_BODIES) {
-    const hood = named(makeVehicle(body), "hood");
-    assert.ok(hood, body);
-    assert.notEqual(hood.geometry.type, "BoxGeometry");
+    assert.match(makeVehicle(body).userData.assetFile,/\.glb$/);
   }
   const tank = named(makeVehicle("geared-bike"), "tank");
   assert.equal(tank.geometry.type, "LatheGeometry");

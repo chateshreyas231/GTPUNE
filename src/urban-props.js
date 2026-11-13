@@ -276,8 +276,10 @@ export function createUrbanProps(scene, options = {}) {
 
   function clearWorkers() {
     for (const worker of workers) {
+      worker.userData.disposed = true;
       root.remove(worker);
-      worker.traverse((object) => object.geometry?.dispose());
+      if (options.disposeWorker) options.disposeWorker(worker);
+      else worker.traverse((object) => object.geometry?.dispose());
     }
     workers.length = 0;
   }
@@ -295,6 +297,7 @@ export function createUrbanProps(scene, options = {}) {
       workers.push(worker);
       root.add(worker);
     }
+    options.hydrateWorkers?.(workers);
   }
   placeWorkers(center);
 
@@ -341,7 +344,10 @@ export function createUrbanProps(scene, options = {}) {
       center = [px, pz];
       placeWorkers(center);
     }
-    for (const worker of workers) worker.userData.tick(elapsed);
+    for (const worker of workers) {
+      if (worker.userData.mixer) worker.userData.walk?.(step, 0);
+      else worker.userData.tick(elapsed);
+    }
     if (smokingTarget?.visible && cigarette) {
       smokeWait -= step;
       if (smokeWait <= 0) {
@@ -415,6 +421,9 @@ export function createUrbanProps(scene, options = {}) {
     get diagnostics() {
       return {
         workers: workers.length,
+        detailedWorkers: workers.filter(
+          (w) => w.userData.cast === "construction-worker",
+        ).length,
         smoking: Boolean(smokingTarget),
         activeParticles: particles.filter((particle) => particle.life > 0)
           .length,

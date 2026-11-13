@@ -1,0 +1,229 @@
+{
+  "version": 1,
+  "license": "CC0-1.0",
+  "author": "GTPUNE contributors",
+  "generator": "scripts/build-pune-houses.py",
+  "reference": "Original interpretations of user supplied Pune residential architecture references; unseen sides and dimensions inferred; no source pixels, watermark, signage or named-location claims.",
+  "assets": [
+    {
+      "id": "timber-wada",
+      "kind": "building",
+      "dimensionsMeters": [
+        9.5458,
+        11.62,
+        9.83
+      ],
+      "designEnvelopeMeters": [
+        9,
+        11.5,
+        9
+      ],
+      "triangles": 52804,
+      "nativeTriangles": 52804,
+      "bytes": 2817940,
+      "sha256": "668123274f19b7b9fc0b4765d3d73188d51a953b6ffd58d56a0f0aa2858f8078",
+      "animations": [],
+      "source": "assets/blender/timber-wada.blend",
+      "sourceSha256": "c0b457608ec1089d771efcc2e1c79cdbc0fe0a1261c9142899d512f38a36c619",
+      "file": "/assets/pune-originals/timber-wada.glb"
+    },
+    {
+      "id": "green-wada",
+      "kind": "building",
+      "dimensionsMeters": [
+        8.24,
+        10.545,
+        9.6
+      ],
+      "designEnvelopeMeters": [
+        8,
+        10.5,
+        9
+      ],
+      "triangles": 53228,
+      "nativeTriangles": 53228,
+      "bytes": 2927312,
+      "sha256": "b1148e2c5105e0ac18ff59e8f7aa9476099d9e082c3fdc22fb9a9703dad01d8d",
+      "animations": [],
+      "source": "assets/blender/green-wada.blend",
+      "sourceSha256": "3082f8f65119a3af7d5d4b4813842ef54b2917c4227bfa517693e95433a92796",
+      "file": "/assets/pune-originals/green-wada.glb"
+    },
+    {
+      "id": "ornate-wada",
+      "kind": "building",
+      "dimensionsMeters": [
+        9.24,
+        12.7,
+        9.6
+      ],
+      "designEnvelopeMeters": [
+        9,
+        12,
+        9
+      ],
+      "triangles": 56502,
+      "nativeTriangles": 56502,
+      "bytes": 3136664,
+      "sha256": "b581932ab85ebdc22bbcb8cc09ebcab1786f7861006407ae1a65495b5fa94ccc",
+      "animations": [],
+      "source": "assets/blender/ornate-wada.blend",
+      "sourceSha256": "e18a60183fd73924b0935d671e3a21eebac5076a7f364789dc1155c938022f12",
+      "file": "/assets/pune-originals/ornate-wada.glb"
+    },
+    {
+      "id": "courtyard-wada",
+      "kind": "building",
+      "dimensionsMeters": [
+        13.0761,
+        10.08,
+        13.46
+      ],
+      "designEnvelopeMeters": [
+        13,
+        10,
+        13
+      ],
+      "triangles": 26984,
+      "nativeTriangles": 26984,
+      "bytes": 1374544,
+      "sha256": "6d50112bb6085d2ac513ea59f19732a28d30399d4ee7ce63ddb83d095d2a2ab3",
+      "animations": [],
+      "source": "assets/blender/courtyard-wada.blend",
+      "sourceSha256": "feec29ca3c7a98998d19323c7d8d9c16ade90f5ffac1d2a24060f258a8c0d318",
+      "file": "/assets/pune-originals/courtyard-wada.glb"
+    },
+    {
+      "id": "basalt-blue-house",
+      "kind": "building",
+      "dimensionsMeters": [
+        7.5567,
+        7.68,
+        8.83
+      ],
+      "designEnvelopeMeters": [
+        7,
+        7.6,
+        8
+      ],
+      "triangles": 36630,
+      "nativeTriangles": 36630,
+      "bytes": 1969116,
+      "sha256": "01f9d0eb944ba6e8078d00a53e226b86db890fa8fc8b6575a296a1360e153cd0",
+      "animations": [],
+      "source": "assets/blender/basalt-blue-house.blend",
+      "sourceSha256": "9ec1a7cf432ad44005d47948f1de8f10eb720078b4570f63f61a4c42d5634cd1",
+      "file": "/assets/pune-originals/basalt-blue-house.glb"
+    },
+    {
+      "id": "tiled-bungalow",
+      "kind": "building",
+      "dimensionsMeters": [
+        8.5507,
+        8.58,
+        10.83
+      ],
+      "designEnvelopeMeters": [
+        8,
+        8.5,
+        10
+      ],
+      "triangles": 28522,
+      "nativeTriangles": 28522,
+      "bytes": 1543088,
+      "sha256": "9c3d26cd1ba7cd697695cd72c902c06f21928183d133886eb759c643b0b9d8c5",
+      "animations": [],
+      "source": "assets/blender/tiled-bungalow.blend",
+      "sourceSha256": "7500736517361f34cc3f075e1922dae716062f6447cb7ba0d60007c20d9f080f",
+      "file": "/assets/pune-originals/tiled-bungalow.glb"
+    },
+    {
+      "id": "garden-bungalow",
+      "kind": "building",
+      "dimensionsMeters": [
+        9.24,
+        7.245,
+        11.6
+      ],
+      "designEnvelopeMeters": [
+        9,
+        7.2,
+        11
+      ],
+      "triangles": 26024,
+      "nativeTriangles": 26024,
+      "bytes": 1475136,
+      "sha256": "887e38faba121dcb887b5a9dfa2a9890d1189341ec809682b8c0e8c0a859ad2d",
+      "animations": [],
+      "source": "assets/blender/garden-bungalow.blend",
+      "sourceSha256": "92fc82d630f168327f9b96c6e62247188eee026780c05c2d73180186a496405a",
+      "file": "/assets/pune-originals/garden-bungalow.glb"
+    },
+    {
+      "id": "modern-villa",
+      "kind": "building",
+      "dimensionsMeters": [
+        9.4,
+        8.85,
+        11.6
+      ],
+      "designEnvelopeMeters": [
+        9,
+        8.6,
+        11
+      ],
+      "triangles": 29220,
+      "nativeTriangles": 29220,
+      "bytes": 1675648,
+      "sha256": "198d20ed992de145cab826de3cdca034e9775d48700b0022b256b515ba65868a",
+      "animations": [],
+      "source": "assets/blender/modern-villa.blend",
+      "sourceSha256": "a8a0b5ef31890f11e440f067944f812727d25895e95e0f989533327ea44a14b2",
+      "file": "/assets/pune-originals/modern-villa.glb"
+    },
+    {
+      "id": "brick-villa",
+      "kind": "building",
+      "dimensionsMeters": [
+        8.3075,
+        10.545,
+        10.6
+      ],
+      "designEnvelopeMeters": [
+        8,
+        10.5,
+        10
+      ],
+      "triangles": 36568,
+      "nativeTriangles": 36568,
+      "bytes": 2179332,
+      "sha256": "625f50bebd9df14a2196e87b76465648b2ede810074f9892f8d16c831be3f7d1",
+      "animations": [],
+      "source": "assets/blender/brick-villa.blend",
+      "sourceSha256": "0990dedeb865e8820918e7ecc580b0863fd7761dcf022bd503af0ed81ddb692e",
+      "file": "/assets/pune-originals/brick-villa.glb"
+    },
+    {
+      "id": "weathered-house",
+      "kind": "building",
+      "dimensionsMeters": [
+        7.24,
+        7.445,
+        8.6
+      ],
+      "designEnvelopeMeters": [
+        7,
+        7.4,
+        8
+      ],
+      "triangles": 39504,
+      "nativeTriangles": 39504,
+      "bytes": 2213784,
+      "sha256": "41bcd0ea4f5377f3db60156148b1cb6c177e87fe9bb3c8fe41e8af5ed2dd1865",
+      "animations": [],
+      "source": "assets/blender/weathered-house.blend",
+      "sourceSha256": "704656de866e755997317d09ada4ef81c1b339d0d753450313f815c0903c157a",
+      "file": "/assets/pune-originals/weathered-house.glb"
+    }
+  ]
+}

@@ -5,6 +5,7 @@ export function bodyRadius(kind) {
   if (kind === "armor") return 2.15;
   if (kind === "player-car") return 1.35;
   if (kind === "car") return 1.25;
+  if (kind === "bus") return 1.55;
   if (kind === "police") return 1.4;
   if (kind === "ambulance") return 1.65;
   if (kind === "fire") return 1.9;

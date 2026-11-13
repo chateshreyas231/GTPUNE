@@ -36,7 +36,8 @@ export function junkieProfile(index) {
 
 export function serviceFleet() {
   const bodies = [];
-  for (let i = 0; i < CITY_SERVICES.policeCars; i++) bodies.push("police-sedan");
+  for (let i = 0; i < CITY_SERVICES.policeCars; i++)
+    bodies.push(["police-patrol-suv", "police-classic-jeep", "police-transport"][i % 3]);
   for (let i = 0; i < CITY_SERVICES.ambulances; i++) bodies.push("ambulance-van");
   for (let i = 0; i < CITY_SERVICES.fireEngines; i++) bodies.push("fire-engine");
   return bodies;

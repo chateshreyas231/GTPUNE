@@ -1,21 +1,24 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { REFERENCE_CARS, attachVehicleAsset } from "./vehicle-assets.js";
+import {
+  REFERENCE_CARS,
+  BLENDER_VEHICLES,
+  NORMAL_CARS,
+  SUPERCARS,
+  TRANSPORT_VEHICLES,
+  LEGACY_CAR_REPLACEMENTS,
+  attachVehicleAsset,
+} from "./vehicle-assets.js";
 
 // Two-wheelers outnumber cars by 4 to 1. Bodies are original meshes.
-export const STREET_FLEET = { cars: 12, motorcycles: 48 };
+export const STREET_FLEET = { cars: 12, motorcycles: 48, buses: 3 };
 
-export const CAR_BODIES = [
-  "compact-suv",
-  "boxy-offroader",
-  "tall-suv",
-  ...Object.keys(REFERENCE_CARS),
-];
+export const CAR_BODIES = Object.keys(REFERENCE_CARS);
 export const BIKE_BODIES = ["scooter", "scooter-apron", "moped", "geared-bike"];
 
 export const BODY_LABELS = {
   ...Object.fromEntries(
-    Object.entries(REFERENCE_CARS).map(([id, spec]) => [id, spec.label]),
+    Object.entries(BLENDER_VEHICLES).map(([id, spec]) => [id, spec.label]),
   ),
   "compact-suv": "Compact SUV",
   "boxy-offroader": "Boxy Off-roader",
@@ -29,10 +32,19 @@ export const BODY_LABELS = {
   "fire-engine": "Fire Engine",
 };
 
-export const SERVICE_BODIES = ["police-sedan", "ambulance-van", "fire-engine"];
+export const SERVICE_BODIES = [
+  "police-patrol-suv",
+  "police-classic-jeep",
+  "police-transport",
+  "ambulance-van",
+  "fire-engine",
+];
 
 const SERVICE_KIND = {
   "police-sedan": "police",
+  "police-patrol-suv": "police",
+  "police-classic-jeep": "police",
+  "police-transport": "police",
   "ambulance-van": "ambulance",
   "fire-engine": "fire",
 };
@@ -154,11 +166,25 @@ for (const [index, body] of Object.keys(REFERENCE_CARS).entries()) {
     hornFreq: 370 + index * 29,
   };
 }
+for (const [index, body] of Object.keys(TRANSPORT_VEHICLES).entries()) {
+  VEHICLE_TONES[body] = {
+    ...VEHICLE_TONES["police-sedan"],
+    hornFreq: 165 + index * 17,
+    engineBase: 40 + index * 3,
+  };
+}
 
 export function fleetBody(index) {
   if (index < STREET_FLEET.motorcycles)
     return BIKE_BODIES[index % BIKE_BODIES.length];
-  return CAR_BODIES[(index - STREET_FLEET.motorcycles) % CAR_BODIES.length];
+  const car = index - STREET_FLEET.motorcycles;
+  if (car >= STREET_FLEET.cars)
+    return Object.keys(TRANSPORT_VEHICLES).filter(
+      (id) => TRANSPORT_VEHICLES[id].kind === "bus",
+    )[(car - STREET_FLEET.cars) % 3];
+  // Five everyday cars for each special car. Rotate every design across cycles.
+  if (car % 6 === 5) return Object.keys(SUPERCARS)[Math.floor(car / 6) % 5];
+  return Object.keys(NORMAL_CARS)[(car - Math.floor(car / 6)) % 5];
 }
 
 export function distanceGain(distance, reach = 46) {
@@ -297,86 +323,6 @@ function finish(g, body, exhaust) {
   g.userData.tone = VEHICLE_TONES[body];
   if (SERVICE_KIND[body]) g.userData.siren = SIREN_TONES[SERVICE_KIND[body]];
   return g;
-}
-
-function compactSuv(color) {
-  const { g, box, lamp, round, blob, wheel, paint, glass, dark } =
-    builder(color);
-  const wheels = [
-    wheel(-0.78, -1.35, 0.38),
-    wheel(0.78, -1.35, 0.38),
-    wheel(-0.78, 1.4, 0.38),
-    wheel(0.78, 1.4, 0.38),
-  ];
-  round(1.72, 0.46, 3.55, paint, 0, 0.62, 0, 0.2);
-  blob(1.32, 0.26, 1.15, paint, 0, 0.78, -1.28, "hood");
-  round(1.46, 0.5, 1.65, paint, 0, 1.02, 0.28, 0.18, "roof");
-  round(1.12, 0.3, 1.2, glass, 0, 1.05, 0.22, 0.08);
-  for (const [x, z] of [
-    [-0.78, -1.3],
-    [0.78, -1.3],
-    [-0.78, 1.25],
-    [0.78, 1.25],
-  ])
-    blob(0.52, 0.2, 0.68, paint, x, 0.58, z, "fender");
-  lamp(0.34, 0.08, 0.03, -0.42, 0.68, -1.76);
-  lamp(0.34, 0.08, 0.03, 0.42, 0.68, -1.76);
-  box(0.32, 0.08, 0.02, dark, 0, 0.46, -1.8);
-  g.userData.wheels = wheels;
-  return finish(g, "compact-suv", [0.55, 0.42, 2.05]);
-}
-
-function boxyOffroader(color) {
-  const { g, add, lamp, round, blob, wheel, paint, glass, dark, metal } =
-    builder(color);
-  const wheels = [
-    wheel(-0.82, -1.15, 0.44),
-    wheel(0.82, -1.15, 0.44),
-    wheel(-0.82, 1.2, 0.44),
-    wheel(0.82, 1.2, 0.44),
-  ];
-  round(1.68, 0.58, 2.15, paint, 0, 0.95, 0.15, 0.08);
-  blob(1.4, 0.42, 1.15, paint, 0, 1.05, -1.05, "hood");
-  round(1.58, 0.72, 1.7, paint, 0, 1.52, 0.15, 0.1, "roof");
-  round(1.28, 0.42, 1.25, glass, 0, 1.58, 0.1, 0.06);
-  for (const x of [-0.86, 0.86])
-    blob(0.48, 0.26, 0.78, paint, x, 0.62, -1.05, "fender");
-  lamp(0.22, 0.1, 0.04, -0.42, 0.82, -1.58);
-  lamp(0.22, 0.1, 0.04, 0.42, 0.82, -1.58);
-  const spare = add(
-    new THREE.CylinderGeometry(0.34, 0.34, 0.16, 12),
-    dark,
-    0,
-    1.25,
-    1.72,
-  );
-  spare.rotation.x = Math.PI / 2;
-  add(new THREE.TorusGeometry(0.22, 0.04, 6, 10), metal, 0, 1.25, 1.81);
-  g.userData.wheels = wheels;
-  g.userData.spare = true;
-  return finish(g, "boxy-offroader", [-0.55, 0.55, 1.7]);
-}
-
-function tallSuv(color) {
-  const { g, box, lamp, round, blob, wheel, paint, glass, dark } =
-    builder(color);
-  const wheels = [
-    wheel(-0.86, -1.55, 0.4),
-    wheel(0.86, -1.55, 0.4),
-    wheel(-0.86, 1.55, 0.4),
-    wheel(0.86, 1.55, 0.4),
-  ];
-  round(1.84, 0.5, 4.15, paint, 0, 0.68, 0, 0.2);
-  blob(1.45, 0.3, 1.3, paint, 0, 0.86, -1.45, "hood");
-  round(1.62, 0.78, 2.15, paint, 0, 1.28, 0.3, 0.2, "roof");
-  round(1.28, 0.46, 1.6, glass, 0, 1.32, 0.22, 0.1);
-  for (const x of [-0.9, 0.9])
-    blob(0.46, 0.24, 0.8, paint, x, 0.55, -1.45, "fender");
-  lamp(0.28, 0.08, 0.03, -0.48, 0.62, -2.12);
-  lamp(0.28, 0.08, 0.03, 0.48, 0.62, -2.12);
-  box(0.38, 0.12, 0.03, dark, 0, 0.52, -2.15);
-  g.userData.wheels = wheels;
-  return finish(g, "tall-suv", [0.62, 0.48, 2.2]);
 }
 
 function scooter(color, apronWidth, lengthScale, body) {
@@ -571,31 +517,6 @@ function paintOf(color) {
   });
 }
 
-function policeSedan() {
-  const { g, box, round, blob, wheel, paint, glass, dark, glow, beacons } =
-    builder(0xf4f1ea);
-  const navy = paintOf(0x1e3a5f);
-  const wheels = [
-    wheel(-0.82, -1.45, 0.38),
-    wheel(0.82, -1.45, 0.38),
-    wheel(-0.82, 1.45, 0.38),
-    wheel(0.82, 1.45, 0.38),
-  ];
-  round(1.76, 0.48, 4.05, paint, 0, 0.64, 0, 0.18);
-  blob(1.38, 0.28, 1.2, paint, 0, 0.8, -1.35, "hood");
-  round(1.52, 0.52, 1.7, paint, 0, 1.08, 0.15, 0.16, "roof");
-  round(1.16, 0.32, 1.25, glass, 0, 1.1, 0.1, 0.08);
-  for (const x of [-0.9, 0.9]) box(0.06, 0.14, 3.15, navy, x, 0.78, 0.05);
-  box(0.7, 0.08, 0.32, dark, 0, 1.48, 0.05);
-  glow(0.18, 0.1, 0.16, 0x3d7ec9, -0.2, 1.56, 0.05);
-  glow(0.18, 0.1, 0.16, 0xc4473a, 0.2, 1.56, 0.05);
-  box(0.36, 0.08, 0.03, glass, -0.4, 0.7, -2.02);
-  box(0.36, 0.08, 0.03, glass, 0.4, 0.7, -2.02);
-  g.userData.wheels = wheels;
-  g.userData.beacons = beacons;
-  return finish(g, "police-sedan", [0.58, 0.42, 2.1]);
-}
-
 function ambulanceVan() {
   const { g, box, round, blob, wheel, paint, glass, dark, glow, beacons } =
     builder(0xf7f4ee);
@@ -692,23 +613,25 @@ function fireEngine() {
 }
 
 export function makeVehicle(body, color = 0xe5d6ae) {
-  if (REFERENCE_CARS[body]) {
-    const root = compactSuv(REFERENCE_CARS[body].color);
+  body = LEGACY_CAR_REPLACEMENTS[body] || body;
+  if (BLENDER_VEHICLES[body]) {
+    const root = new THREE.Group();
     finish(root, body, [0.6, 0.36, 2.45]);
+    root.userData.kind = BLENDER_VEHICLES[body].kind || "car";
+    root.userData.tier = BLENDER_VEHICLES[body].tier || "transport";
+    root.userData.length = BLENDER_VEHICLES[body].length || 4.7;
+    root.userData.beacons = [];
+    root.userData.assetFile = `/assets/pune-originals/${body}.glb`;
     return attachVehicleAsset(root, body);
   }
-  if (body === "compact-suv") return compactSuv(color);
-  if (body === "boxy-offroader") return boxyOffroader(color);
-  if (body === "tall-suv") return tallSuv(color);
   if (body === "scooter") return scooter(color, 0.34, 1, "scooter");
   if (body === "scooter-apron")
     return scooter(color, 0.62, 1.12, "scooter-apron");
   if (body === "moped") return moped(color);
   if (body === "geared-bike") return gearedBike(color);
-  if (body === "police-sedan") return policeSedan();
   if (body === "ambulance-van") return ambulanceVan();
   if (body === "fire-engine") return fireEngine();
-  return compactSuv(color);
+  return makeVehicle("city-hatch", color);
 }
 
 export function makeMotorcycle(color = 0xb4332a, riderSkin = 0xd6b08a) {

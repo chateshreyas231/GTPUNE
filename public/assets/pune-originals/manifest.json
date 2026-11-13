@@ -4,7 +4,7 @@
   "license": "CC0-1.0",
   "generator": "scripts/build-blender-assets.py",
   "blender": "4.3.2",
-  "reference": "User supplied five vehicle photographs; original approximate designs; hidden views inferred. No logos or source pixels included.",
+  "reference": "User supplied ten vehicle photographs; original approximate designs; hidden views inferred. No logos or source pixels included.",
   "assets": [
     {
       "id": "deccan-supercar",
@@ -194,6 +194,111 @@
       "source": "assets/blender/pune-young-adult.blend",
       "sourceSha256": "dc41ff5c5c248e023d9877f95230999d5f2b17b1b3c2057ac26377d19860189f",
       "file": "/assets/pune-originals/pune-young-adult.glb"
+    },
+    {
+      "id": "pune-electric",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        2.352,
+        1.457,
+        5.145
+      ],
+      "designEnvelopeMeters": [
+        1.92,
+        1.52,
+        5.140000000000001
+      ],
+      "triangles": 23532,
+      "bytes": 813216,
+      "sha256": "486aa2a8937c3882cd5ef26aa0625ef699347ca92fa0be8d4b4b5baa0b9e28a1",
+      "animations": [],
+      "source": "assets/blender/pune-electric.blend",
+      "sourceSha256": "02996ee5f79933537f766aec54208e9682081c0c53bc997c250f36d32fca8ca9",
+      "file": "/assets/pune-originals/pune-electric.glb"
+    },
+    {
+      "id": "deccan-coupe",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        2.209,
+        1.417,
+        4.835
+      ],
+      "designEnvelopeMeters": [
+        1.79,
+        1.48,
+        4.8
+      ],
+      "triangles": 23052,
+      "bytes": 813980,
+      "sha256": "562ab290efb1452beadc26ac4e875fa44bccb7a9262d3963c4f63de6ae865290",
+      "animations": [],
+      "source": "assets/blender/deccan-coupe.blend",
+      "sourceSha256": "5283701b3b2965135aa3b27e1617cb0d7628d29fd18b1d5422d14be5a9ab73bd",
+      "file": "/assets/pune-originals/deccan-coupe.glb"
+    },
+    {
+      "id": "pune-classic",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        2.044,
+        1.535,
+        4.325
+      ],
+      "designEnvelopeMeters": [
+        1.64,
+        1.61,
+        4.25
+      ],
+      "triangles": 24712,
+      "bytes": 815376,
+      "sha256": "b1a811040c0937236b1d56ba244e72e410f1f84c22ed65256f09fbc839f95a21",
+      "animations": [],
+      "source": "assets/blender/pune-classic.blend",
+      "sourceSha256": "fac4b3863861aba67f83e0cc0d5ddb3698fee15b89ce94e834cd0ecc2b9323d0",
+      "file": "/assets/pune-originals/pune-classic.glb"
+    },
+    {
+      "id": "ghat-roadster",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        2.154,
+        1.21,
+        4.155
+      ],
+      "designEnvelopeMeters": [
+        1.74,
+        1.31,
+        4.12
+      ],
+      "triangles": 19778,
+      "bytes": 646684,
+      "sha256": "52071018c51d92e5e072b85cf0f749f7dd5a3b37244126aa1bda71d04bb8f367",
+      "animations": [],
+      "source": "assets/blender/ghat-roadster.blend",
+      "sourceSha256": "f680f97f91fcbdcdb3d08583e30729507f883ea7078e4897beffd27e0e23fc05",
+      "file": "/assets/pune-originals/ghat-roadster.glb"
+    },
+    {
+      "id": "city-hatch",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        1.879,
+        1.517,
+        3.775
+      ],
+      "designEnvelopeMeters": [
+        1.49,
+        1.58,
+        3.7
+      ],
+      "triangles": 23844,
+      "bytes": 774068,
+      "sha256": "cf1c624f3ef7892a03c559df8548e6085ffcffb9315bc83a4175390c2eba9b90",
+      "animations": [],
+      "source": "assets/blender/city-hatch.blend",
+      "sourceSha256": "32af764b3fcc70ce7ffae9fba71e10ea0b59a2c164ea42d50d943548d4a2dd63",
+      "file": "/assets/pune-originals/city-hatch.glb"
     }
   ]
 }

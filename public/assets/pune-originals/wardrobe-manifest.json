@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "license": "CC0-1.0",
+  "author": "GTPUNE contributors",
+  "generator": "scripts/build-pune-wardrobe.py",
+  "reference": "Original fictional adult characters based on supplied clothing/role references. No actor likenesses, police crests, source photo pixels or watermark textures.",
+  "assets": [
+    {
+      "id": "traditional-man",
+      "kind": "animated-human",
+      "dimensionsMeters": [
+        0.666,
+        1.798,
+        0.303
+      ],
+      "designEnvelopeMeters": [
+        0.68,
+        1.74,
+        0.33
+      ],
+      "triangles": 14832,
+      "bytes": 674648,
+      "sha256": "91540c0527ea7fe06e928708000a5cceff25aa727fbb9f27d350bd155e876123",
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash"
+      ],
+      "source": "assets/blender/traditional-man.blend",
+      "sourceSha256": "84038915dda4db31fb3d30d1dd060513a12f668541c79a5bcf1e2f052810b984",
+      "file": "/assets/pune-originals/traditional-man.glb"
+    },
+    {
+      "id": "nauvari-woman",
+      "kind": "animated-human",
+      "dimensionsMeters": [
+        0.666,
+        1.7289,
+        0.337
+      ],
+      "designEnvelopeMeters": [
+        0.68,
+        1.74,
+        0.33
+      ],
+      "triangles": 15346,
+      "bytes": 688128,
+      "sha256": "6350283e71273c8ae508fed2d685d136ae9c8a43f17ce0d9308c7d731b837874",
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash"
+      ],
+      "source": "assets/blender/nauvari-woman.blend",
+      "sourceSha256": "745f6dd132b5f9a1739c5184c7ed13d517cce1775d037b4ed95004f4e15034a7",
+      "file": "/assets/pune-originals/nauvari-woman.glb"
+    },
+    {
+      "id": "printed-dress",
+      "kind": "animated-human",
+      "dimensionsMeters": [
+        0.666,
+        1.7289,
+        0.337
+      ],
+      "designEnvelopeMeters": [
+        0.68,
+        1.74,
+        0.33
+      ],
+      "triangles": 14964,
+      "bytes": 673412,
+      "sha256": "e1ae20f61bbfb10368793b27d039e979829e55bf6bc9d8f1b9c3df9ffeb2744a",
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash"
+      ],
+      "source": "assets/blender/printed-dress.blend",
+      "sourceSha256": "6bc1172b4acffa4fc5e8a617a96c421a6034a7f9e1c0a1a2effd18f89eff38c4",
+      "file": "/assets/pune-originals/printed-dress.glb"
+    },
+    {
+      "id": "casual-jacket",
+      "kind": "animated-human",
+      "dimensionsMeters": [
+        0.666,
+        1.7289,
+        0.303
+      ],
+      "designEnvelopeMeters": [
+        0.68,
+        1.74,
+        0.33
+      ],
+      "triangles": 14396,
+      "bytes": 665840,
+      "sha256": "bfb368a40a34e86045702e220618a6322f5c6380f6b5ce7cfad6422e6ad16ddd",
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash"
+      ],
+      "source": "assets/blender/casual-jacket.blend",
+      "sourceSha256": "7612efe49383a2048fc68e3a25b07fa94083477280f20ef9cc575154784fc7c2",
+      "file": "/assets/pune-originals/casual-jacket.glb"
+    },
+    {
+      "id": "casual-woman",
+      "kind": "animated-human",
+      "dimensionsMeters": [
+        0.666,
+        1.7289,
+        0.337
+      ],
+      "designEnvelopeMeters": [
+        0.68,
+        1.74,
+        0.33
+      ],
+      "triangles": 14880,
+      "bytes": 664304,
+      "sha256": "8e9dd78e3351fbcd38e3cd46562c66095072f0ac8f86b25598ff11e3a7e51fb2",
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash"
+      ],
+      "source": "assets/blender/casual-woman.blend",
+      "sourceSha256": "beb53b40ed1489b2971c525b8a4b4a3cd34604991c84883cb0b450297668e8b4",
+      "file": "/assets/pune-originals/casual-woman.glb"
+    },
+    {
+      "id": "construction-worker",
+      "kind": "animated-human",
+      "dimensionsMeters": [
+        0.666,
+        1.801,
+        0.314
+      ],
+      "designEnvelopeMeters": [
+        0.68,
+        1.74,
+        0.33
+      ],
+      "triangles": 15588,
+      "bytes": 721436,
+      "sha256": "cdff09c6be9c41287e5c300b740030b757cb33c51fa799e939210c8ab185ca1d",
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash"
+      ],
+      "source": "assets/blender/construction-worker.blend",
+      "sourceSha256": "0b5f31706d9181381afea3794d711a1f1336eef2ae8f4ae77f4874b8761bbe17",
+      "file": "/assets/pune-originals/construction-worker.glb"
+    },
+    {
+      "id": "police-officer",
+      "kind": "animated-human",
+      "dimensionsMeters": [
+        0.675,
+        1.786,
+        0.303
+      ],
+      "designEnvelopeMeters": [
+        0.68,
+        1.74,
+        0.33
+      ],
+      "triangles": 16168,
+      "bytes": 769044,
+      "sha256": "f826640e3674a91c82cbb9ce4bcbafc67d1dbe3b36276b821e87ce1053bbc0db",
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash"
+      ],
+      "source": "assets/blender/police-officer.blend",
+      "sourceSha256": "a57b0e96dda10bd4358b10b6c67c700f54e929c3b23e87db1036187d0583466c",
+      "file": "/assets/pune-originals/police-officer.glb"
+    },
+    {
+      "id": "policewoman",
+      "kind": "animated-human",
+      "dimensionsMeters": [
+        0.675,
+        1.786,
+        0.334
+      ],
+      "designEnvelopeMeters": [
+        0.68,
+        1.74,
+        0.33
+      ],
+      "triangles": 16712,
+      "bytes": 790896,
+      "sha256": "64c6dbe0ed67f6e773127a3919c2c27852a1b9ed8bcfded3314a82cc63462d2b",
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash"
+      ],
+      "source": "assets/blender/policewoman.blend",
+      "sourceSha256": "8ae43eda21ca79cde8e0051e59404255a1ff47a0aa4f7ff4f81de894f8a028d0",
+      "file": "/assets/pune-originals/policewoman.glb"
+    }
+  ]
+}

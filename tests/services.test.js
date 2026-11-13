@@ -36,7 +36,7 @@ test("city services ride in the car lane and stop for people", () => {
   assert.ok(CITY_SERVICES.ambulances >= 1);
   assert.ok(CITY_SERVICES.fireEngines >= 1);
   const fleet = serviceFleet();
-  assert.equal(fleet.filter((body) => body === "police-sedan").length, CITY_SERVICES.policeCars);
+  assert.equal(fleet.filter((body) => body.startsWith("police-")).length, CITY_SERVICES.policeCars);
   assert.equal(fleet.filter((body) => body === "ambulance-van").length, CITY_SERVICES.ambulances);
   assert.equal(fleet.filter((body) => body === "fire-engine").length, CITY_SERVICES.fireEngines);
   const road = { width: 10 };
@@ -75,7 +75,8 @@ test("service meshes are original geometry with a synthesized siren", () => {
     const signature = [mesh.userData.kind, mesh.userData.label, size.x.toFixed(2), size.y.toFixed(2), size.z.toFixed(2)].join("|");
     assert.equal(seen.has(signature), false);
     seen.add(signature);
-    assert.ok(mesh.userData.beacons.length >= 2);
+    if (mesh.userData.assetFile) assert.match(mesh.userData.assetFile,/\.glb$/);
+    else assert.ok(mesh.userData.beacons.length >= 2);
     assert.ok(mesh.userData.siren.low < mesh.userData.siren.high);
     assert.equal(mesh.userData.siren.sample, undefined);
     mesh.traverse((child) => {

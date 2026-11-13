@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { REFERENCE_CARS } from "../../src/vehicle-assets.js";
 
-test("five Blender cars load, spawn through the cheat UI and remain driveable with animated people", async ({
+test("ten Blender cars load, spawn through the cheat UI and remain driveable with animated people", async ({
   page,
 }) => {
   test.setTimeout(180000);
@@ -23,7 +23,7 @@ test("five Blender cars load, spawn through the cheat UI and remain driveable wi
   );
   expect(
     (await page.evaluate(() => window.__pune.state)).playerVehicle,
-  ).toMatchObject({ body: "deccan-supercar", wheels: 4 });
+  ).toMatchObject({ body: "pune-electric", tier: "normal", wheels: 4 });
   await page.locator("#play").click();
   await page.locator("#world").click({ position: { x: 700, y: 450 } });
   await page.keyboard.down("w");
@@ -71,7 +71,7 @@ test("five Blender cars load, spawn through the cheat UI and remain driveable wi
       )
       .toBe(body);
   }
-  // All five spawned models use the same E-entry registry as ordinary cars.
+  // All ten spawned models use the same E-entry registry as ordinary cars.
   for (const body of Object.keys(REFERENCE_CARS)) {
     const ride = (await page.evaluate(() => window.__pune.state)).spawned.find(
       (r) => r.kind === body,

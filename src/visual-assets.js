@@ -2,14 +2,13 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import { PLAYER_LOOKS, lookById } from "./characters.js";
+import { RESIDENT_CAST, residentVariant } from "./resident-cast.js";
 
 const lookCache = new Map();
 const residentCache = new Map();
 const loader = new GLTFLoader();
 
 // Original Blender people. All three are fictional clothed adult proportions.
-const MEN = ["pune-man", "pune-young-adult"];
-const WOMEN = ["pune-woman"];
 export async function loadSurfacePhotos() {
   const loader = new THREE.TextureLoader();
   const result = {};
@@ -32,7 +31,7 @@ export async function loadSurfacePhotos() {
 export async function hydrateResidents(roots) {
   const library = residentCache;
   await Promise.all(
-    [...MEN, ...WOMEN].map(async (name) => {
+    RESIDENT_CAST.map(async (name) => {
       if (!library.has(name))
         library.set(
           name,
@@ -40,13 +39,10 @@ export async function hydrateResidents(roots) {
         );
     }),
   );
-  let men = 0;
-  let women = 0;
+  let count = 0;
   for (const root of roots) {
-    const woman = root.userData.role?.gender === "woman";
-    const name = woman
-      ? WOMEN[women++ % WOMEN.length]
-      : MEN[men++ % MEN.length];
+    if (root.userData.disposed) continue;
+    const name = residentVariant(root.userData.role, count++);
     const gltf = library.get(name);
     const model = clone(gltf.scene);
     model.updateMatrixWorld(true);
@@ -58,7 +54,7 @@ export async function hydrateResidents(roots) {
     normalized.add(model);
     normalized.scale.setScalar(1.72 / height);
     normalized.position.y = -bounds.min.y * normalized.scale.x;
-    paintResident(model, root);
+    paintResident(model, root, name);
     model.traverse((object) => {
       if (!object.isMesh) return;
       object.castShadow = true;
@@ -100,10 +96,10 @@ export async function hydrateResidents(roots) {
     };
     root.userData.walk(0, 0);
   }
-  return roots.length;
+  return count;
 }
 
-function paintResident(model, root) {
+function paintResident(model, root, cast) {
   const skin = root.userData.skin ?? 0xd6b08a;
   const shirt = root.userData.shirt ?? 0xe4dccc;
   const pants = root.userData.role?.bottom ?? 0x343a42;
@@ -117,8 +113,10 @@ function paintResident(model, root) {
       const next = material.clone();
       const name = material.name || "";
       if (/skin|face/i.test(name)) next.color.setHex(skin);
-      else if (/shirt|vest|detail/i.test(name)) next.color.setHex(shirt);
-      else if (/pants/i.test(name)) next.color.setHex(pants);
+      else if (/shirt|vest|detail/i.test(name) && cast === "casual-jacket")
+        next.color.setHex(shirt);
+      else if (/pants/i.test(name) && cast === "casual-jacket")
+        next.color.setHex(pants);
       else if (/hair|hat/i.test(name)) next.color.setHex(hair);
       else if (/belt/i.test(name)) next.color.setHex(0x2a241c);
       next.roughness = 0.78;
@@ -170,7 +168,7 @@ function markSharedGeometry(model) {
     object.userData.sharedCharacterGeometry = true;
   });
 }
-function clearCharacter(root) {
+export function clearCharacter(root) {
   const oldMixer = root.userData.mixer;
   if (oldMixer) {
     oldMixer.stopAllAction();

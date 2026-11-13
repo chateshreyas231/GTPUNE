@@ -3,7 +3,7 @@
 blender -b --python scripts/build-blender-assets.py -- [--render]
 Meters; cars face +Y, humans -Y. Keep loft controls in this source editable.
 """
-import bpy, math, json, hashlib, sys
+import bpy, math, json, hashlib, sys, struct
 from pathlib import Path
 from mathutils import Vector
 
@@ -133,18 +133,29 @@ def save_export(name, kind, dimensions, clips=()):
         export_animation_mode='ACTIONS', export_force_sampling=True, export_frame_range=False,
         export_skins=True, export_yup=True, export_extras=True)
     p=OUT/(name+'.glb')
+    raw=p.read_bytes();length=struct.unpack_from('<I',raw,12)[0];exported=json.loads(raw[20:20+length])
+    native_triangles=triangles
+    triangles=sum(exported['accessors'][primitive['indices']]['count']//3 for item in exported['meshes'] for primitive in item['primitives'])
     measured=[round(max(p[i] for p in points)-min(p[i] for p in points),4) for i in [0,2,1]]
-    REPORT.append(dict(id=name,kind=kind,dimensionsMeters=measured,designEnvelopeMeters=dimensions,triangles=triangles,
+    REPORT.append(dict(id=name,kind=kind,dimensionsMeters=measured,designEnvelopeMeters=dimensions,triangles=triangles,nativeTriangles=native_triangles,
         bytes=p.stat().st_size,sha256=hashlib.sha256(p.read_bytes()).hexdigest(),animations=list(clips),
         source=f'assets/blender/{name}.blend',sourceSha256=hashlib.sha256((SOURCE/(name+'.blend')).read_bytes()).hexdigest(),file=f'/assets/pune-originals/{name}.glb'))
 
-CAR_SPECS = [
+SUPERCAR_SPECS = [
     dict(id='deccan-supercar',color=(.82,.025,.045),length=4.7,width=1.96,height=1.18,wb=2.7,cabin=.44,style='super'),
     dict(id='heritage-gt',color=(.72,.75,.78),length=4.3,width=1.72,height=1.25,wb=2.48,cabin=.37,style='classic'),
     dict(id='sahyadri-suv',color=(.48,.52,.46),length=4.75,width=1.92,height=1.72,wb=2.82,cabin=.76,style='suv'),
     dict(id='deccan-muscle',color=(.86,.035,.045),length=4.73,width=1.9,height=1.36,wb=2.72,cabin=.52,style='muscle'),
     dict(id='sunset-cabrio',color=(1,.65,.045),length=4.73,width=1.9,height=1.36,wb=2.72,cabin=.52,style='cabrio'),
 ]
+NORMAL_CAR_SPECS = [
+    dict(id='pune-electric',color=(.45,.49,.55),length=4.94,width=1.92,height=1.44,wb=2.94,style='electric',body_top=.94,rear=-1.63,front=1.12,roofrear=-.78,rooffront=.35,grille=.40,lamp=.77),
+    dict(id='deccan-coupe',color=(.84,.85,.87),length=4.60,width=1.79,height=1.40,wb=2.75,style='silver-coupe',body_top=.94,rear=-1.25,front=.72,roofrear=-.54,rooffront=.10,grille=.59,lamp=.78),
+    dict(id='pune-classic',color=(.48,.68,.69),length=4.05,width=1.64,height=1.53,wb=2.40,style='retro',body_top=.78,rear=-1.55,front=.88,roofrear=-.65,rooffront=.06,grille=.34,lamp=.74,radius=.32),
+    dict(id='ghat-roadster',color=(.49,.50,.53),length=3.92,width=1.74,height=1.23,wb=2.31,style='roadster',body_top=.80,grille=.44,lamp=.65,radius=.31),
+    dict(id='city-hatch',color=(.94,.64,.10),length=3.50,width=1.49,height=1.50,wb=2.34,style='hatch',body_top=.84,rear=-1.45,front=.82,roofrear=-1.04,rooffront=.17,grille=.37,lamp=.72,radius=.28),
+]
+CAR_SPECS = SUPERCAR_SPECS + NORMAL_CAR_SPECS
 
 def car(spec):
     reset()
@@ -159,16 +170,17 @@ def car(spec):
     caliper=mat('Calipers',(.98,.67,.07),.35,.4)
     leather=mat('Leather',(.15,.12,.10),.8)
     seam=mat('Panel_seams',(.085,.08,.075),.6)
-    R=.37 if style!='classic' else .33
+    opened=style in ('cabrio','roadster')
+    R=spec.get('radius',.37 if style!='classic' else .33)
     if style=='suv': R=.40
     axles=[-spec['wb']/2,spec['wb']/2]
     # Section loft: crowned bonnet, hips, belt and wheel-arch aperture returns.
     count=65; v=[]; faces=[]
     for j in range(count):
         y=-L/2+L*j/(count-1); t=y/(L/2)
-        taper = .83 if style=='classic' else .91 if style=='super' else .94
+        taper = .78 if style=='retro' else .86 if style in ('roadster','hatch') else .83 if style=='classic' else .91 if style=='super' else .94
         width=W/2*(taper+(1-taper)*math.sin(math.pi*j/(count-1)))
-        top=(.81 if style=='super' else .86 if style=='classic' else 1.12 if style=='suv' else .92)
+        top=spec.get('body_top',(.81 if style=='super' else .86 if style=='classic' else 1.12 if style=='suv' else .92))
         top-=(.24 if style=='super' else .17 if style=='classic' else .10)*abs(t)**3
         if style=='super': top+=.10*math.exp(-((y+1.25)/.6)**2)
         arch=max([R+.035+math.sqrt(max(0,(R+.045)**2-(y-a)**2)) if abs(y-a)<R+.045 else .22 for a in axles])
@@ -178,7 +190,7 @@ def car(spec):
         v.extend((x,y,z) for x,z in zip(xs,zs))
     for j in range(count-1):
         for i in range(10):
-            if style=='cabrio' and i in (4,5) and -.95 < -L/2+L*(j+.5)/(count-1) < .74:
+            if opened and i in (4,5) and -.95 < -L/2+L*(j+.5)/(count-1) < .74:
                 continue  # Open passenger compartment; the bonnet is not a cabin lid.
             a=j*10+i; b=j*10+(i+1)%10
             faces.append((a,b,b+10,a+10))
@@ -186,14 +198,14 @@ def car(spec):
     body=mesh('Crowned_body_with_arches',v,faces,paint)
     sub=body.modifiers.new('Body surface refinement','SUBSURF'); sub.levels=1
     # Window cage controls: rear glass, roof crown, windshield shoulder and rake.
-    belt=.88 if style!='suv' else 1.10
-    rear=-2.12 if style=='suv' else -1.25 if style=='classic' else -.98
-    front=1.12 if style=='suv' else .22 if style=='classic' else .72
-    roofrear=-.56 if style!='suv' else -1.55
-    rooffront=.12 if style!='suv' else .40
+    belt=spec.get('body_top',.88 if style!='suv' else 1.10)
+    rear=spec.get('rear',-2.12 if style=='suv' else -1.25 if style=='classic' else -.98)
+    front=spec.get('front',1.12 if style=='suv' else .22 if style=='classic' else .72)
+    roofrear=spec.get('roofrear',-.56 if style!='suv' else -1.55)
+    rooffront=spec.get('rooffront',.12 if style!='suv' else .40)
     roofW=W*(.35 if style!='suv' else .39)
     windowW=W*.425
-    if style!='cabrio':
+    if not opened:
         verts=[(-windowW,rear,belt),(windowW,rear,belt),(-roofW,roofrear,H-.045),(roofW,roofrear,H-.045),
             (-roofW,rooffront,H-.025),(roofW,rooffront,H-.025),(-windowW,front,belt),(windowW,front,belt)]
         mesh('Four_glass_panels',verts,[(0,1,3,2),(0,2,4,6),(1,7,5,3),(4,5,7,6)],glass)
@@ -202,7 +214,7 @@ def car(spec):
         for sign in (-1,1):
             line('Pillar_and_window_seal',[(sign*windowW,rear,belt),(sign*roofW,roofrear,H-.045),(sign*roofW,rooffront,H-.025),(sign*windowW,front,belt)],.025,paint)
             line('Window_lower_seal',[(sign*windowW,rear,belt),(sign*windowW,front,belt)],.012,dark)
-            if style=='suv': line('B_pillar',[(sign*windowW,-.45,belt),(sign*roofW,-.45,H-.025)],.037,dark)
+            if style in ('suv','hatch','electric'): line('B_pillar',[(sign*windowW,-.45,belt),(sign*roofW,-.45,H-.025)],.037,dark)
     else:
         mesh('Windshield',[(-windowW,.75,belt),(windowW,.75,belt),(-roofW,.25,H-.05),(roofW,.25,H-.05)],[(0,1,3,2)],glass)
         for s in (-1,1): line('Windshield_frame',[(s*windowW,.75,belt),(s*roofW,.25,H-.05)],.025,paint)
@@ -210,8 +222,8 @@ def car(spec):
         box('Open_cabin_floor',(0,-.12,.58),(W*.74,1.66,.08),dark,.04)
     # Cabin, four sculpted seats and wheel visible in the convertible.
     for x in [-.39,.39]:
-        for y in ([.05] if style in ('super','classic') else [-.52,.14]):
-            seat_z = .54 if style=='super' else .60 if style=='classic' else .72
+        for y in ([.05] if style in ('super','classic','roadster') else [-.52,.14]):
+            seat_z = .48 if style=='roadster' else .54 if style=='super' else .60 if style=='classic' else .72
             if y < -.2: seat_z -= .15
             box('Seat_cushion',(x,y,seat_z),(.48,.44,.13),leather,.06)
             back=box('Seat_back',(x,y-.16,seat_z+.20),(.46,.13,.40),leather,.065); back.rotation_euler.x=-.15
@@ -229,25 +241,68 @@ def car(spec):
         ellipsoid('Mirror_housing',(s*W*.55,.56,1.02),(.12,.12,.055),paint,16,8)
         box('Mirror_glass',(s*W*.55,.46,1.02),(.17,.014,.065),glass,.01)
     # Front/rear fascia with grilles, splitters, multiple light signatures and exhaust.
-    grille_z=.39 if style=='super' else .70 if style=='suv' else .49
-    lamp_z=.55 if style=='super' else .96 if style=='suv' else .73
+    grille_z=spec.get('grille',.39 if style=='super' else .70 if style=='suv' else .49)
+    lamp_z=spec.get('lamp',.55 if style=='super' else .96 if style=='suv' else .73)
     box('Front_grille',(0,L/2+.007,grille_z),(W*.67,.035,.20 if style=='super' else .25),dark,.055)
-    for x in [-.48,-.32,-.16,0,.16,.32,.48]:
+    for x in ([] if style in ('electric','retro','hatch','roadster') else [-.48,-.32,-.16,0,.16,.32,.48]):
         box('Grille_slat',(x,L/2+.031,grille_z),(.018,.01,.14 if style=='super' else .19),chrome,.003)
     box('Front_splitter',(0,L/2-.02,.24),(W*.96,.19,.045),dark,.018)
     box('Rear_diffuser',(0,-L/2-.01,.30),(W*.83,.12,.16),dark,.02)
     for x in [-.47,-.23,0,.23,.47]: box('Diffuser_fin',(x,-L/2-.04,.28),(.018,.18,.12),dark,.004)
     for s in (-1,1):
-        if style=='classic':
-            ellipsoid('Round_headlight',(s*.58,L/2+.015,.69),(.13,.035,.12),light,24,12)
+        if style in ('classic','retro','hatch'):
+            ellipsoid('Round_headlight',(s*W*.34,L/2+.015,lamp_z),(.13 if style!='hatch' else .145,.035,.12 if style!='hatch' else .10),light,24,12)
             ellipsoid('Round_tail_light',(s*.60,-L/2-.02,.64),(.065,.025,.065),red,20,10)
+        elif style in ('electric','roadster','silver-coupe'):
+            ellipsoid('Swept_headlight',(s*W*.33,L/2+.015,lamp_z),(W*.15,.027,.021 if style=='electric' else .046),light,24,10)
+            box('Rear_LED',(s*W*.29,-L/2-.034,belt-.10),(W*.36,.023,.035),red,.01)
         else:
             box('Lamp_black_bezel',(s*W*.34,L/2+.018,lamp_z),(W*.25,.045,.07 if style=='super' else .12),dark,.025)
             for k in range(3):
                 lamp=box('LED_signature',(s*(W*.25+k*.058),L/2+.046,lamp_z+.008),(.042 if style=='super' else .024,.018,.025 if style=='super' else .074),light,.007)
                 if style in ('muscle','cabrio'): lamp.rotation_euler.y=-s*.25
             box('Rear_LED',(s*W*.29,-L/2-.034,.56 if style=='super' else .97 if style=='suv' else .78),(W*.37,.023,.035),red,.01)
-        tube('Exhaust_outlet',(s*.62,-L/2-.04,.35),(s*.62,-L/2-.16,.35),.05,.05,chrome)
+        if style!='electric':tube('Exhaust_outlet',(s*.62,-L/2-.04,.35),(s*.62,-L/2-.16,.35),.05,.05,chrome)
+    if style=='electric':
+        box('Full_width_light_bar',(0,L/2+.04,lamp_z),(W*.79,.02,.016),light,.006)
+        box('Closed_EV_nose',(0,L/2+.02,.61),(W*.65,.03,.17),paint,.04)
+        for s in [-1,1]:box('Vertical_running_lamp',(s*W*.42,L/2+.03,.49),(.025,.018,.22),light,.008)
+    if style in ('hatch','retro'):
+        box('Rubber_front_bumper',(0,L/2+.065,.46),(W*.90,.10,.085),chrome if style=='retro' else dark,.03)
+        box('Rear_bumper',(0,-L/2-.065,.44),(W*.88,.1,.085),chrome if style=='retro' else dark,.03)
+    if style=='roadster':
+        for s in [-1,1]:line('Headrest_roll_hoop',[(s*.39-.13,-.32,.86),(s*.39-.13,-.32,1.10),(s*.39+.13,-.32,1.10),(s*.39+.13,-.32,.86)],.022,dark)
+    if style=='silver-coupe':
+        for z in [.50,.59,.68]:box('Horizontal_grille_bar',(0,L/2+.04,z),(W*.57,.02,.014),chrome,.004)
+    if style=='retro':
+        # Distinct beetle-like full round roof, curved rear glass and pod fenders.
+        for s in [-1,1]:
+            for y in axles:
+                verts=[];faces=[]
+                for j in range(19):
+                    a=j*math.pi/18
+                    for x in [s*(W*.5-.21),s*(W*.5+.08)]:verts.append((x,y+(R+.09)*math.cos(a),R+(R+.09)*math.sin(a)))
+                for j in range(18):faces.append((j*2,j*2+1,j*2+3,j*2+2))
+                f=mesh('Rounded_wing',verts,faces,paint);mod=f.modifiers.new('Wing_skin','SOLIDIFY');mod.thickness=.018
+        # Replace the angular cabin with a continuous crowned section shell.
+        for o in list(bpy.context.scene.objects):
+            if o.name.startswith(('Four_glass_panels','Roof_crown','Pillar_and_window','Window_lower')):bpy.data.objects.remove(o,do_unlink=True)
+        stations=[(-1.6,.36,.85),(-1.38,.57,1.15),(-1.03,.64,1.42),(-.55,.66,1.53),(-.05,.65,1.48),(.42,.61,1.24),(.87,.57,.83)]
+        verts=[];faces=[]
+        for y,w,top in stations:
+            for j in range(17):
+                a=j*math.pi/16;verts.append((w*math.cos(a),y,belt+(top-belt)*math.sin(a)))
+        for k in range(len(stations)-1):
+            for j in range(16):a=k*17+j;faces.append((a,a+1,a+18,a+17))
+        canopy=mesh('Rounded_steel_canopy',verts,faces,paint)
+        # Glazed side openings seated just proud of the rounded upper shell.
+        for s in [-1,1]:
+            for y0,y1 in [(-1.23,-.53),(-.46,.28)]:
+                pts=[(s*.654,y0,.92),(s*.67,y0,1.20),(s*.67,y1,1.29),(s*.654,y1,.92)]
+                mesh('Classic_side_glazing',pts,[(0,1,2,3)] if s<0 else [(3,2,1,0)],glass)
+                line('Chrome_window_surround',pts,.014,chrome,True)
+        mesh('Classic_windscreen',[(-.52,.72,.95),(.52,.72,.95),(.50,.31,1.32),(-.50,.31,1.32)],[(0,1,2,3)],glass)
+        mesh('Classic_rear_glass',[(-.43,-1.43,1.09),(-.46,-1.14,1.36),(.46,-1.14,1.36),(.43,-1.43,1.09)],[(0,1,2,3)],glass)
     if style=='super':
         box('Bonnet_carbon_insert',(0,1.6,.77),(W*.5,.52,.035),dark,.045)
         for s in [-1,1]:
@@ -279,6 +334,8 @@ def car(spec):
                 o=bpy.context.object; o.name=label; o.data.materials.append(ma); parts.append(o)
                 for f in o.data.polygons:f.use_smooth=True
             parts.append(tube('Brake_disc',(-.045,0,0),(.045,0,0),R*.64,R*.64,chrome,32))
+            if style in ('retro','electric','hatch'):
+                parts.append(ellipsoid('Wheel_cover',(side*.065,0,0),(.062,R*.71,R*.71),chrome,24,10))
             parts.append(tube('Hub',(-.11,0,0),(.11,0,0),.065,.065,dark,20))
             for spoke in range(10):
                 a=spoke*math.tau/10
@@ -299,7 +356,7 @@ def car(spec):
     consolidate(exclude=pivots)
     save_export(name,'vehicle',[W,H+.08,L+.2])
 
-def human(name, female=False, young=False):
+def human(name, female=False, young=False, costume='casual'):
     reset()
     skin=mat('Skin',(.70,.48,.33),.58)
     bs=skin.node_tree.nodes.get('Principled BSDF'); bs.inputs['Subsurface Weight'].default_value=.08
@@ -312,12 +369,23 @@ def human(name, female=False, young=False):
     lips=mat('Lips',(.43,.23,.19),.64)
     shoes=mat('Shoes',(.10,.075,.055),.72)
     buttons=mat('Buttons',(.43,.43,.39),.5)
+    khaki=costume in ('police','policewoman')
+    if khaki:
+        cloth.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value=(*[linear(c) for c in (.70,.59,.40)],1)
+        pants.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value=(*[linear(c) for c in (.66,.55,.37)],1)
+    if costume in ('dress','sari','casual-woman'):
+        rgb=(.88,.86,.76) if costume=='dress' else (.65,.10,.30) if costume=='sari' else (.10,.10,.13)
+        cloth.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value=(*[linear(c) for c in rgb],1)
+        if costume=='casual-woman':pants.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value=skin.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value
+    if costume=='traditional':
+        cloth.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value=(*[linear(c) for c in (.76,.08,.07)],1)
+        pants.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value=(.70,.69,.61,1)
     objects=[]; bindings={}
     def bind(o,weights):
         objects.append(o); bindings[o.name]=weights; return o
     def rigid(o,bone):return bind(o,[(bone,1)])
     # Natural 7.4-head proportions, gently tapered clothing rather than primitive limbs.
-    torso=loft('Tailored_shirt',[(0,0,.80 if female else .89,.17 if female else .155,.10),(0,0,.96,.17,.108),(0,0,1.08,.145 if female else .155,.10),(0,0,1.23,.175 if female else .19,.116),(0,0,1.35,.218 if not female else .195,.108),(0,0,1.395,.14,.09),(0,0,1.43,.075,.067)],cloth,32)
+    torso=loft('Tailored_shirt',[(0,0,.68 if costume=='traditional' else .80 if female else .89,.17 if female else .155,.10),(0,0,.96,.17,.108),(0,0,1.08,.145 if female else .155,.10),(0,0,1.23,.175 if female else .19,.116),(0,0,1.35,.218 if not female else .195,.108),(0,0,1.395,.14,.09),(0,0,1.43,.075,.067)],cloth,32)
     bind(torso,'torso')
     rigid(loft('Neck',[(0,0,1.38,.057,.052),(0,.005,1.49,.052,.05)],skin,24),'Head')
     # Head is an anatomical section cage: jaw, chin, cheek, brow and cranial vault.
@@ -362,6 +430,50 @@ def human(name, female=False, young=False):
         rigid(mesh('Collar',[(s*.01,-.07,1.424),(s*.07,-.087,1.412),(s*.064,-.112,1.357),(s*.012,-.112,1.386)],[(0,1,2,3)],cloth),'Chest')
     rigid(line('Button_placket',[(0,-.111,.96),(0,-.119,1.34)],.005,cloth),'Chest')
     for z in [.99,1.07,1.15,1.23,1.31]: rigid(ellipsoid('Button',(0,-.123,z),(.004,.002,.004),buttons,12,6),'Chest')
+    # Clothing families follow the same deforming rig; original patterns, no photo textures.
+    if costume!='casual':
+        gold=mat('Garment_trim',(.89,.64,.13),.45,.3)
+        accent=mat('Costume_accent',(.09,.43,.17) if costume=='sari' else (.88,.86,.76) if costume=='dress' else (.95,.35,.025) if costume=='worker' else (.16,.13,.12),.85)
+        if costume in ('sari','dress','casual-woman'):
+            skirt_bottom=.12 if costume in ('sari','dress') else .71
+            skirt=loft('Draped_garment',[(0,0,skirt_bottom,.23 if costume!='casual-woman' else .21,.145),(0,0,.55 if skirt_bottom<.3 else .77,.21,.14),(0,0,.88,.215,.15),(0,0,1.00,.205,.14)],accent,32)
+            bind(skirt,'drape')
+            if costume=='sari':
+                pallu=mesh('Sari_pallu',[(-.17,-.12,.88),(.15,-.13,1.35),(.09,-.14,1.39),(-.20,-.14,.90)],[(0,1,2,3)],gold);bind(pallu,'torso')
+                for i in range(8):bind(line('Sari_pleat',[(-.12+i*.035,-.146,.16),(-.11+i*.031,-.145,.85)],.006,gold),'drape')
+                for s in [-1,1]:rigid(ellipsoid('Gold_earring',(s*.10,-.007,1.555),(.007,.005,.011),gold,12,8),'Head')
+            elif costume=='dress':
+                flower=mat('Printed_flowers',(.59,.13,.25),.9)
+                for i in range(42):
+                    z=.2+(i*.113)%1.17;x=math.sin(i*7.7)*(.16 if z>.95 else .20)
+                    o=mesh('Original_floral_print',[(x,-.15,z+.014),(x+.014,-.151,z),(x,-.15,z-.014),(x-.014,-.151,z)],[(0,1,2,3)],flower)
+                    bind(o,'torso' if z>.93 else 'drape')
+        if costume in ('traditional','police','policewoman'):
+            if costume=='traditional':
+                rigid(ellipsoid('Maharashtrian_pheta',(0,.012,1.738),(.105,.088,.064),cloth,24,12),'Head')
+                rigid(line('Pheta_fold',[(-.09,-.055,1.75),(.0,-.084,1.78),(.09,-.04,1.76)],.012,gold),'Head')
+                rigid(box('Pheta_tail',(-.075,.045,1.68),(.05,.025,.18),cloth,.01),'Head')
+            else:
+                cap=mat('Police_cap',(.12,.16,.23),.8)
+                rigid(ellipsoid('Peaked_cap',(0,.008,1.745),(.103,.086,.045),cap),'Head')
+                rigid(ellipsoid('Cap_peak',(0,-.086,1.713),(.085,.052,.010),cap),'Head')
+                rigid(line('Cap_band',[(-.089,-.03,1.724),(0,-.082,1.724),(.089,-.03,1.724)],.010,gold),'Head')
+                for s in [-1,1]:
+                    rigid(box('Uniform_pocket',(s*.085,-.119,1.25),(.065,.016,.077),cloth,.006),'Chest')
+                    rigid(box('Epaulette',(s*.16,0,1.382),(.07,.065,.015),gold,.004),'Chest')
+                rigid(box('Duty_belt',(0,0,.94),(.34,.23,.036),accent,.012),'Hips')
+                rigid(box('Belt_buckle',(0,-.122,.94),(.042,.014,.033),gold,.003),'Hips')
+                rigid(tube('Lathi',(.32,.05,.76),(.33,.05,.23),.012,.012,hair,12),'Hand_R')
+            if not female:
+                for s in [-1,1]:rigid(line('Moustache',[(0,-.091,1.556),(s*.018,-.084,1.553),(s*.03,-.076,1.559)],.004,hair),'Head')
+        if costume=='worker':
+            rigid(ellipsoid('Safety_helmet',(0,.01,1.74),(.108,.097,.065),gold,24,12),'Head')
+            rigid(ellipsoid('Helmet_brim',(0,-.014,1.705),(.125,.123,.010),gold,24,8),'Head')
+            vest=loft('High_visibility_vest',[(0,0,.97,.18,.118),(0,0,1.15,.18,.127),(0,0,1.34,.216,.122)],accent,24);bind(vest,'torso')
+            for s in [-1,1]:rigid(box('Reflective_shoulder_strip',(s*.105,-.132,1.19),(.032,.015,.28),gold,.003),'Chest')
+            rigid(box('Reflective_waist_strip',(0,-.132,1.035),(.34,.015,.028),gold,.003),'Hips')
+        if costume=='casual-jacket':
+            for s in [-1,1]:rigid(box('Open_jacket_lapel',(s*.09,-.126,1.21),(.08,.025,.31),accent,.018),'Chest')
     bones=[('Hips',(0,0,.88),(0,0,1.04),None),('Chest',(0,0,1.04),(0,0,1.39),'Hips'),('Head',(0,0,1.39),(0,0,1.72),'Chest')]
     for s,suffix in [(-1,'L'),(1,'R')]:
         hip=(s*.095,0,.93); knee=(s*.098,-.012,.52); ankle=(s*.10,0,.09)
@@ -392,7 +504,10 @@ def human(name, female=False, young=False):
             vg=o.vertex_groups.get(bone) or o.vertex_groups.new(name=bone);vg.add([vertex],value,'REPLACE')
         for vert in o.data.vertices:
             z=vert.co.z
-            if spec=='torso':
+            if spec=='drape':
+                t=max(0,min(1,(z-.70)/.25));side='L' if vert.co.x<0 else 'R'
+                weight(vert.index,'Hips',t);weight(vert.index,'Thigh_'+side,1-t)
+            elif spec=='torso':
                 t=max(0,min(1,(z-1.00)/.20)); weight(vert.index,'Hips',1-t);weight(vert.index,'Chest',t)
             elif isinstance(spec,tuple) and spec[0] in ('leg','arm'):
                 part,suffix=spec; pivot=.52 if part=='leg' else 1.085
@@ -451,12 +566,12 @@ def human(name, female=False, young=False):
             mod=o.modifiers.new('Pune_skeletal_deformation','ARMATURE');mod.object=rig;o.parent=rig
     save_export(name,'animated-human',[.68,1.74,.33],clips)
 
-def studio_preview():
+def studio_preview(specs=None, prefix="vehicles", people=True):
     reset()
     floor=mat('Studio_floor',(.22,.24,.27),.8)
     box('Floor',(0,0,-.16),(32,27,.2),floor,0)
     groups=[]
-    for i,spec in enumerate(CAR_SPECS):
+    for i,spec in enumerate(specs or SUPERCAR_SPECS):
         # Import the full GLB for faithful delivery-material inspection.
         before=set(bpy.data.objects)
         bpy.ops.import_scene.gltf(filepath=str(OUT/(spec['id']+'.glb')))
@@ -468,7 +583,7 @@ def studio_preview():
         group.rotation_euler.z=-.3
         groups.append(group)
     setup_camera((12,17,15),(0,0,0),1050,760)
-    bpy.context.scene.render.filepath=str(SOURCE/'vehicles-preview.png');bpy.ops.render.render(write_still=True)
+    bpy.context.scene.render.filepath=str(SOURCE/f'{prefix}-preview.png');bpy.ops.render.render(write_still=True)
     # Matching neutral orthographic silhouettes expose rake/proportion errors.
     scene=bpy.context.scene
     scene.render.resolution_x=1600;scene.render.resolution_y=500
@@ -479,7 +594,8 @@ def studio_preview():
             g.location=(0,(i-2)*5.4,0) if view=='side' else ((i-2)*5.4,0,0)
         scene.camera.location=pos
         scene.camera.rotation_euler=(Vector(target)-scene.camera.location).to_track_quat('-Z','Y').to_euler()
-        scene.render.filepath=str(SOURCE/f'vehicles-{view}.png');bpy.ops.render.render(write_still=True)
+        scene.render.filepath=str(SOURCE/f'{prefix}-{view}.png');bpy.ops.render.render(write_still=True)
+    if not people:return
     reset()
     for i,name in enumerate(['pune-woman','pune-man','pune-young-adult']):
         before=set(bpy.data.objects);bpy.ops.import_scene.gltf(filepath=str(OUT/(name+'.glb')))
@@ -504,14 +620,26 @@ def setup_camera(pos,target,w,h):
     scene.camera=camera
     scene.view_settings.view_transform='AgX'
 
-if '--preview-only' not in sys.argv:
-    for spec in CAR_SPECS:car(spec)
-    human('pune-woman',female=True)
-    human('pune-man')
-    human('pune-young-adult',young=True)
-    (OUT/'manifest.json').write_text(json.dumps(dict(version=1,author='GTPUNE contributors',license='CC0-1.0',
-        generator='scripts/build-blender-assets.py',blender=bpy.app.version_string,
-        reference='User supplied five vehicle photographs; original approximate designs; hidden views inferred. No logos or source pixels included.',
-        assets=REPORT),indent=2)+'\n')
-if '--render' in sys.argv:studio_preview()
-print('PUNE_ASSETS_COMPLETE',json.dumps(REPORT))
+def main():
+    normal_only = '--normal-only' in sys.argv
+    if '--preview-only' not in sys.argv:
+        preserved=[]
+        if normal_only:
+            existing=json.loads((OUT/'manifest.json').read_text())
+            normal_ids={s['id'] for s in NORMAL_CAR_SPECS}
+            preserved=[a for a in existing['assets'] if a['id'] not in normal_ids]
+        for spec in (NORMAL_CAR_SPECS if normal_only else CAR_SPECS):car(spec)
+        if not normal_only:
+            human('pune-woman',female=True)
+            human('pune-man')
+            human('pune-young-adult',young=True)
+        (OUT/'manifest.json').write_text(json.dumps(dict(version=1,author='GTPUNE contributors',license='CC0-1.0',
+            generator='scripts/build-blender-assets.py',blender=bpy.app.version_string,
+            reference='User supplied ten vehicle photographs; original approximate designs; hidden views inferred. No logos or source pixels included.',
+            assets=preserved+REPORT),indent=2)+'\n')
+    if '--render' in sys.argv:
+        if not normal_only:studio_preview()
+        studio_preview(NORMAL_CAR_SPECS,'normal-vehicles',people=False)
+    print('PUNE_ASSETS_COMPLETE',json.dumps(REPORT))
+
+if __name__ == '__main__':main()

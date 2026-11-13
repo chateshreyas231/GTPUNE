@@ -2,17 +2,21 @@
 import bpy, json, math
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
-manifest=json.loads((root/'public/assets/pune-originals/manifest.json').read_text())
+assets=[]
+for filename in ['manifest.json','houses-manifest.json','transport-manifest.json','wardrobe-manifest.json']:
+    assets.extend(json.loads((root/'public/assets/pune-originals'/filename).read_text())['assets'])
 report=[]
-for asset in manifest['assets']:
+for asset in assets:
     bpy.ops.wm.open_mainfile(filepath=str(root/asset['source']))
     objects=list(bpy.context.scene.objects)
     meshes=[o for o in objects if o.type=='MESH']
     assert all(math.isfinite(c) for o in meshes for v in o.data.vertices for c in v.co)
     if asset['kind']=='vehicle':
         assert len([o for o in objects if o.name.startswith('wheel_')])==4
-        assert bpy.data.objects.get('Crowned_body_with_arches')
+        assert bpy.data.objects.get('Crowned_body_with_arches') or bpy.data.objects.get('Lower_bus_body')
         assert len(meshes)>30  # Semantic panels survive in the editable source.
+    elif asset['kind']=='building':
+        assert len(meshes)>25
     else:
         rig=next(o for o in objects if o.type=='ARMATURE')
         assert len(rig.data.bones)==15

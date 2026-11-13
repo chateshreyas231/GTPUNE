@@ -17,6 +17,9 @@
     "map:fetch": "node scripts/fetch-map.mjs",
     "assets:build": "blender -b --python-exit-code 1 --python scripts/build-blender-assets.py -- --render",
     "assets:check": "blender -b --python-exit-code 1 --python scripts/check-blender-sources.py",
+    "assets:houses": "blender -b --python-exit-code 1 --python scripts/build-pune-houses.py -- --render",
+    "assets:wardrobe": "blender -b --python-exit-code 1 --python scripts/build-pune-wardrobe.py -- --render",
+    "assets:transport": "blender -b --python-exit-code 1 --python scripts/build-pune-transport.py -- --render",
     "prestart": "npm run build",
     "pretest": "npm run build"
   },

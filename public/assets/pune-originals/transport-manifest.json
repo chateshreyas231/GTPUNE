@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "license": "CC0-1.0",
+  "author": "GTPUNE contributors",
+  "generator": "scripts/build-pune-transport.py",
+  "reference": "Original interpretations of user supplied bus and police vehicle photographs. Unseen geometry and dimensions inferred; no copied pixels, watermarks, crests or manufacturer logos.",
+  "assets": [
+    {
+      "id": "city-green-bus",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        3.266,
+        3.195,
+        11.4725
+      ],
+      "designEnvelopeMeters": [
+        2.45,
+        3.2,
+        11.2
+      ],
+      "triangles": 23226,
+      "nativeTriangles": 23226,
+      "bytes": 1180000,
+      "sha256": "8e7dccd1dda73230191c74136c4f3402baa625aa2d636996f3adb08f1e086fbc",
+      "animations": [],
+      "source": "assets/blender/city-green-bus.blend",
+      "sourceSha256": "95b58ce02b26e166e693a0396946c1b176031e640c6f58c1528603dbc3fcf2f8",
+      "file": "/assets/pune-originals/city-green-bus.glb"
+    },
+    {
+      "id": "state-red-coach",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        3.266,
+        3.395,
+        11.6725
+      ],
+      "designEnvelopeMeters": [
+        2.45,
+        3.4,
+        11.4
+      ],
+      "triangles": 23245,
+      "nativeTriangles": 23245,
+      "bytes": 1180164,
+      "sha256": "c03fd3a8c6497867962e480f0db487152cd7efd1fa6580a1797069c3974bf1b5",
+      "animations": [],
+      "source": "assets/blender/state-red-coach.blend",
+      "sourceSha256": "6418052ecc694987df7cfece6a1ae933016c3b790a8d9c2fde22dbff88338c91",
+      "file": "/assets/pune-originals/state-red-coach.glb"
+    },
+    {
+      "id": "state-red-bus",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        3.266,
+        3.195,
+        10.6725
+      ],
+      "designEnvelopeMeters": [
+        2.45,
+        3.1,
+        10.4
+      ],
+      "triangles": 32301,
+      "nativeTriangles": 32301,
+      "bytes": 1726708,
+      "sha256": "7c11f3ff701377b9fd4476164b421e6dd24b280cfb28834c6f67750ac3c96bdf",
+      "animations": [],
+      "source": "assets/blender/state-red-bus.blend",
+      "sourceSha256": "aa543e45617e0cd8766344454669926c5be2a977bf33700ca4ae48bd356f82a5",
+      "file": "/assets/pune-originals/state-red-bus.glb"
+    },
+    {
+      "id": "police-transport",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        3.138,
+        3.22,
+        8.7725
+      ],
+      "designEnvelopeMeters": [
+        2.35,
+        3.05,
+        8.5
+      ],
+      "triangles": 33075,
+      "nativeTriangles": 33427,
+      "bytes": 1759940,
+      "sha256": "ffb81cce53f1d33b6413654962f9e3271df4c30debade567d0b5b8b62e753f4a",
+      "animations": [],
+      "source": "assets/blender/police-transport.blend",
+      "sourceSha256": "2d03f536c407243e65150a7732d04fe86982b5b6c51cf4c1eb2bb5c230ba9d3f",
+      "file": "/assets/pune-originals/police-transport.glb"
+    },
+    {
+      "id": "police-patrol-suv",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        2.308,
+        2.065,
+        4.885
+      ],
+      "designEnvelopeMeters": [
+        1.88,
+        1.9,
+        4.65
+      ],
+      "triangles": 25076,
+      "nativeTriangles": 25428,
+      "bytes": 951520,
+      "sha256": "85dc7a9dfdead32d8fe95d69856c73f327e8cdfaf82163786e876c352ef22e5f",
+      "animations": [],
+      "source": "assets/blender/police-patrol-suv.blend",
+      "sourceSha256": "5929e2e29b3b8667bb96692fec844fc5d1d207939c0650d527709792f8bc69fd",
+      "file": "/assets/pune-originals/police-patrol-suv.glb"
+    },
+    {
+      "id": "police-classic-jeep",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        2.198,
+        2.145,
+        4.435
+      ],
+      "designEnvelopeMeters": [
+        1.78,
+        1.98,
+        4.2
+      ],
+      "triangles": 25076,
+      "nativeTriangles": 25428,
+      "bytes": 956584,
+      "sha256": "589a176009fd0c8190fe50e28d9f8b3c3ebb99a4f39773b8a6cbfeb38bef9085",
+      "animations": [],
+      "source": "assets/blender/police-classic-jeep.blend",
+      "sourceSha256": "335108c28896ba0160d87015d02bd92b8fa5ca8128bd80b89edbf9bcc003b401",
+      "file": "/assets/pune-originals/police-classic-jeep.glb"
+    }
+  ]
+}

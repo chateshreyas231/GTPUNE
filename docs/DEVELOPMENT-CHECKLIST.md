@@ -141,3 +141,14 @@ F is now dedicated to attacks and uses camera aim with the rigged Punch_Left/Pun
 - Three original adult human rigs replace ordinary residents and selectable people; facial details, fingers, clothing, Idle/Walk/Run and three attack clips. Real child scans, full local garment variety and photorealistic skin/hair remain open.
 - Eight editable native sources in `assets/blender/`, delivery/source hash manifest, CC0 license and two Blender preview renders. Source panels/control cages remain separate from merged runtime surfaces.
 - Native Blender reopening and actual hand deformation are checked by `scripts/check-blender-sources.py`; asset integrity/budget checks are included in `npm test`. Browser coverage exercises car loading, spawning, entry, driving, character switching and F combat.
+
+## Expanded reference batches (2026-11-13)
+
+- [x] Five normal cars modeled/exported from Blender; previous five assigned supercar class; old procedural civilian car constructors removed and legacy IDs remapped.
+- [x] Ten Pune-inspired house models, including timber/ornate/green wadas, stone/blue-shutter house, courtyard, tiled bungalow, weathered rowhouse and modern/brick villas; fit suitable nearby residential footprints with protected heights/collisions.
+- [x] Eight skinned wardrobe variants for traditional, sari-inspired, dress/casual, male/female police and construction roles; ordinary crowds, added pedestrians and streaming worksite workers use them.
+- [x] Three public bus models join road traffic. Police SUV, classic jeep and transport bus replace the old patrol sedan slots, with existing sirens and per-instance beacons.
+- [x] Longer vehicles use nose/centre/tail obstacle samples and building-clearance checks. Bus entry/driving/braking/exit and real-map house/role replacement have browser coverage.
+- [x] Native sources and exact source/GLB hash manifests for 37 active models; budget tests and actual Blender reopen/deformation checks.
+
+See [reference asset update](REFERENCE-ASSET-UPDATE.md) for the model list, spawn codes, verification commands and remaining visual/gameplay limits.

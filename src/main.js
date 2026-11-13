@@ -1,7 +1,9 @@
+import { vehicleSamples } from "./vehicle-footprint.js";
 import { loadProgress, saveProgress } from "./progress.js";
 import { createLaw, reportCrime, tickLaw } from "./law.js";
+import { prepareHouseAssets, createHouse } from "./house-assets.js";
 import {
-  REFERENCE_CARS,
+  BLENDER_VEHICLES,
   prepareVehicleAssets,
   vehicleAssetStatus,
 } from "./vehicle-assets.js";
@@ -24,6 +26,7 @@ import {
   hydrateResidents,
   prepareLooks,
   applyLook,
+  clearCharacter,
 } from "./visual-assets.js";
 import { cycleLook, defaultLook, lookById } from "./characters.js";
 import {
@@ -509,6 +512,9 @@ const obstacles = city.buildings.map((b) => {
 });
 const buildingGroup = new THREE.Group();
 scene.add(buildingGroup);
+const houseGroup = new THREE.Group();
+houseGroup.name = "pune-blender-houses";
+scene.add(houseGroup);
 const signGroup = new THREE.Group();
 scene.add(signGroup);
 const signTextures = new Map();
@@ -638,6 +644,8 @@ function referenceWall(profile) {
   return referenceWallMats.get(profile.id);
 }
 function renderBuildings(cx, cz) {
+  // Clones share cached GLB geometry; streaming removes roots without disposing it.
+  houseGroup.clear();
   for (const mesh of [...buildingGroup.children]) {
     mesh.geometry.dispose();
     buildingGroup.remove(mesh);
@@ -652,6 +660,17 @@ function renderBuildings(cx, cz) {
     )
       continue;
     if (b.points.length < 3) continue;
+    const houseDistance = Math.hypot(
+      (b.minX + b.maxX) / 2 - cx,
+      (b.minZ + b.maxZ) / 2 - cz,
+    );
+    if (houseDistance < 220 && houseGroup.children.length < 24) {
+      const house = createHouse(b, roadSegments);
+      if (house) {
+        houseGroup.add(house);
+        continue;
+      }
+    }
     const shape = new THREE.Shape();
     shape.moveTo(b.points[0][0], -b.points[0][1]);
     for (const p of b.points.slice(1)) shape.lineTo(p[0], -p[1]);
@@ -861,7 +880,7 @@ const spawnRoad = roadSegments.reduce((a, b) =>
     : b,
 );
 const spawnHeading = city.source === "OpenStreetMap" ? spawnRoad.angle : 0;
-let player = makeVehicle("deccan-supercar");
+let player = makeVehicle("pune-electric");
 player.rotation.y = spawnHeading;
 scene.add(player);
 player.position.set(city.spawn[0], 0, city.spawn[1]);
@@ -1038,10 +1057,16 @@ const traffic = [];
 const bikeColors = [0xb4332a, 0x1e1e1e, 0x1d4e89, 0xc5c8cc, 0x2f6b45, 0x8a3b2f];
 const carColors = [0xa7b7b3, 0xe3dac4, 0x678e92, 0xa4523f, 0xd7c4a2, 0x6e8b74];
 const homeRoad = closestOn(populationRoads, city.spawn[0], city.spawn[1]);
-const fleetCount = STREET_FLEET.cars + STREET_FLEET.motorcycles;
+const fleetCount =
+  STREET_FLEET.cars + STREET_FLEET.motorcycles + STREET_FLEET.buses;
 for (let i = 0; i < fleetCount; i++) {
   const body = fleetBody(i);
-  const kind = i < STREET_FLEET.motorcycles ? "motorcycle" : "car";
+  const kind =
+    i < STREET_FLEET.motorcycles
+      ? "motorcycle"
+      : i < STREET_FLEET.motorcycles + STREET_FLEET.cars
+        ? "car"
+        : "bus";
   const segment = populationRoads[(i * 3 + 1) % populationRoads.length];
   if (!segment || segment.length < 8) continue;
   const color =
@@ -1068,7 +1093,12 @@ for (let i = 0; i < fleetCount; i++) {
     t,
     direction,
     lateral: (step) => laneLateral(step.segment, kind, step.direction),
-    speed: kind === "motorcycle" ? 8.2 + (i % 5) * 0.4 : 6.4 + (i % 4) * 0.35,
+    speed:
+      kind === "motorcycle"
+        ? 8.2 + (i % 5) * 0.4
+        : kind === "bus"
+          ? 5.2
+          : 6.4 + (i % 4) * 0.35,
     minLength: 70,
     rng: mulberry32(4000 + i * 29),
     yaw: 0,
@@ -1433,6 +1463,11 @@ const urban = createUrbanProps(scene, {
   blocked: collides,
   player: avatar,
   exhaust: false,
+  hydrateWorkers: (roots) =>
+    hydrateResidents(roots).catch((e) =>
+      console.warn("Worker asset fallback", e),
+    ),
+  disposeWorker: clearCharacter,
 });
 const footZoom = new CameraZoomController({
   distance: CINEMATIC.footBack,
@@ -1461,6 +1496,12 @@ Promise.all([
   .catch((e) => console.warn("Human asset fallback", e))
   .finally(dressSmokers);
 prepareVehicleAssets().catch((e) => console.warn("Vehicle asset fallback", e));
+prepareHouseAssets()
+  .then(() => {
+    const p = actor().position;
+    renderBuildings(p.x, p.z);
+  })
+  .catch((e) => console.warn("House asset fallback", e));
 let job = null,
   wallet = 0;
 try {
@@ -1515,11 +1556,14 @@ const toneNodes = new Map();
 const voicePlayer = new Audio();
 voicePlayer.volume = 0.9;
 const actor = () => (walking ? avatar : player);
-const playerBody = () => player.userData.body || "compact-suv";
+const playerBody = () => player.userData.body || "pune-electric";
 function drivenKind() {
-  return player.userData.kind === "armor" ? "armor" : "player-car";
+  return ["armor", "bus"].includes(player.userData.kind)
+    ? player.userData.kind
+    : "player-car";
 }
 function rideKind(mesh) {
+  if (mesh.userData.kind === "bus") return "bus";
   if (mesh.userData.kind === "armor") return "armor";
   if (mesh.userData.kind === "motorcycle") return "motorcycle";
   return "car";
@@ -1747,7 +1791,7 @@ function carChoices() {
   const add = (mesh, x, z, carSpeed, carYaw, agent) => {
     if (
       !mesh ||
-      !["car", "armor", "police", "ambulance", "fire"].includes(
+      !["car", "bus", "armor", "police", "ambulance", "fire"].includes(
         mesh.userData.kind,
       )
     )
@@ -1768,7 +1812,8 @@ function carChoices() {
   for (const mesh of parkedCars)
     add(mesh, mesh.position.x, mesh.position.z, 0, mesh.rotation.y);
   for (const agent of traffic) {
-    if (!["car", "police", "ambulance", "fire"].includes(agent.kind)) continue;
+    if (!["car", "bus", "police", "ambulance", "fire"].includes(agent.kind))
+      continue;
     add(
       agent.mesh,
       agent.x,
@@ -1800,30 +1845,56 @@ function takeCar(choice) {
   vy = 0;
   walkVel.set(0, 0, 0);
 }
+function vehiclePassage(mesh, point, options) {
+  let result;
+  for (const sample of vehicleSamples(
+    mesh,
+    point.x,
+    point.z,
+    point.yaw,
+    bodyRadius(options.kind),
+  )) {
+    result = passage({ ...options, x: sample.x, z: sample.z });
+    if (!result.clear) return result;
+  }
+  return result;
+}
 function vehicleSolids(except) {
   const bodies = [];
   for (const agent of traffic) {
     if (agent.mesh === except) continue;
-    bodies.push({
-      x: agent.x,
-      z: agent.z,
-      radius: bodyRadius(agent.kind),
-    });
+    bodies.push(
+      ...vehicleSamples(
+        agent.mesh,
+        agent.x,
+        agent.z,
+        agent.yaw,
+        bodyRadius(agent.kind),
+      ),
+    );
   }
   for (const mesh of parkedCars) {
     if (mesh === except) continue;
-    bodies.push({
-      x: mesh.position.x,
-      z: mesh.position.z,
-      radius: bodyRadius(mesh.userData.kind || "car"),
-    });
+    bodies.push(
+      ...vehicleSamples(
+        mesh,
+        mesh.position.x,
+        mesh.position.z,
+        mesh.rotation.y,
+        bodyRadius(mesh.userData.kind || "car"),
+      ),
+    );
   }
   if (player !== except)
-    bodies.push({
-      x: player.position.x,
-      z: player.position.z,
-      radius: bodyRadius(player.userData.kind || "car"),
-    });
+    bodies.push(
+      ...vehicleSamples(
+        player,
+        player.position.x,
+        player.position.z,
+        player.rotation.y,
+        bodyRadius(player.userData.kind || "car"),
+      ),
+    );
   return bodies;
 }
 function toggleWalk() {
@@ -2124,14 +2195,14 @@ function spawnRide(kind) {
   const here = actor().position;
   const facing = walking ? lookYaw : yaw;
   const side = spawnedRides.length % 2 === 0 ? 1 : -1;
-  const distance = 5.5 + Math.floor(spawnedRides.length / 2) * 3.6;
+  const distance = 5.5 + Math.floor(spawnedRides.length / 2) * 12;
   const spot = parkBeside(here.x, here.z, facing, { distance, side });
   const mesh =
     kind === "panzer"
       ? makePanzer()
       : kind === "armor"
         ? makeArmoredCarrier()
-        : makeVehicle(REFERENCE_CARS[kind] ? kind : "compact-suv", 0xc96b4a);
+        : makeVehicle(BLENDER_VEHICLES[kind] ? kind : "city-hatch", 0xc96b4a);
   mesh.position.set(spot.x, 0, spot.z);
   mesh.rotation.y = spot.yaw;
   scene.add(mesh);
@@ -2141,7 +2212,7 @@ function spawnRide(kind) {
 }
 function applyActionCheat(text) {
   const code = String(text).trim().toUpperCase();
-  const reference = Object.entries(REFERENCE_CARS).find(
+  const reference = Object.entries(BLENDER_VEHICLES).find(
     ([, spec]) => spec.cheat === code,
   );
   if (reference) {
@@ -2348,6 +2419,9 @@ function spawnPedestrianBoost() {
     beginTrip(agent);
     pedestrians.push(agent);
   }
+  hydrateResidents(pedestrians.slice(-room).map((p) => p.mesh)).catch((e) =>
+    console.warn("Crowd asset fallback", e),
+  );
   return room;
 }
 function spawnTrafficBoost() {
@@ -3505,7 +3579,13 @@ function animate() {
         );
         speed *= impact.retain;
       }
-      if (!collides(nx, nz, 1.4) && !hitTraffic && !victim) {
+      if (
+        vehicleSamples(player, nx, nz, yaw, 1.4).every(
+          (sample) => !collides(sample.x, sample.z, sample.radius),
+        ) &&
+        !hitTraffic &&
+        !victim
+      ) {
         p.set(nx, 0, nz);
         distanceTravelled += Math.abs(speed) * dt;
       } else if (!hitTraffic && !victim) speed = -speed * 0.15;
@@ -3525,9 +3605,7 @@ function animate() {
       if (!agent.points) continue;
       const probe = advanceAlong(agent, dt);
       const radius = bodyRadius(agent.kind);
-      const gate = passage({
-        x: probe.x,
-        z: probe.z,
+      const gate = vehiclePassage(agent.mesh, probe, {
         kind: agent.kind,
         people: pedestrians,
         bodies: [
@@ -3856,7 +3934,9 @@ if (cheatHelp) {
   cheatHelp.textContent = Object.entries(CHEAT_WORDS)
     .map(([word, effect]) => `${word} (${labels[effect]})`)
     .concat(
-      Object.values(REFERENCE_CARS).map((car) => `${car.cheat} (${car.label})`),
+      Object.values(BLENDER_VEHICLES).map(
+        (car) => `${car.cheat} (${car.label})`,
+      ),
     )
     .join(" · ");
 }
@@ -3876,12 +3956,39 @@ window.__pune = {
       mapSource: city.source,
       targetIndex,
       drawCalls: renderer.info.render.calls,
+      cameraY: camera.position.y,
       roads: city.roads.length,
       buildings: city.buildings.length,
+      blenderHouses: houseGroup.children.map((h) => ({
+        ...h.userData,
+        x: h.position.x,
+        z: h.position.z,
+      })),
       detailedHumans,
       vehicleAssets: vehicleAssetStatus(),
+      transportFleet: traffic
+        .filter((t) => t.kind === "bus" || t.kind === "police")
+        .map((t) => ({
+          body: t.mesh.userData.body,
+          kind: t.kind,
+          asset: t.mesh.userData.blenderAsset || null,
+          beacons: t.mesh.userData.beacons?.length || 0,
+        })),
+      residentCast: [
+        ...new Set(
+          pedestrians.map((p) => p.mesh.userData.cast).filter(Boolean),
+        ),
+      ],
+      civilianFleet: traffic
+        .filter((t) => t.kind === "car")
+        .map((t) => ({
+          body: t.mesh.userData.body,
+          tier: t.mesh.userData.tier,
+          asset: t.mesh.userData.blenderAsset || null,
+        })),
       playerVehicle: {
         body: player.userData.body,
+        tier: player.userData.tier || null,
         ready: Boolean(player.userData.assetReady),
         wheels: player.userData.wheels?.length || 0,
       },
@@ -3958,6 +4065,30 @@ window.__pune = {
     };
   },
   debug: {
+    focusHouse() {
+      const house = houseGroup.children[0];
+      if (!house) return null;
+      const road = closestOn(roadSegments, house.position.x, house.position.z);
+      if (!road) return null;
+      const points = [-1, 1].map((side) =>
+        segmentPoint(road.segment, road.t, sidewalkLateral(road.segment, side)),
+      );
+      const p = points.find((q) => !collides(q[0], q[1], 0.4)) || points[0];
+      walking = true;
+      avatar.visible = true;
+      avatar.position.set(p[0], 0, p[1]);
+      lookYaw = Math.atan2(
+        -(house.position.x - p[0]),
+        -(house.position.z - p[1]),
+      );
+      lookPitch = 0.2;
+      const box = new THREE.Box3().setFromObject(house);
+      return {
+        id: house.userData.houseAsset,
+        recordedHeight: house.userData.height,
+        renderedHeight: box.max.y - box.min.y,
+      };
+    },
     cheat(word) {
       return submitCheat(word);
     },
