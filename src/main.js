@@ -34,6 +34,16 @@ import {
   beginJump,
 } from "./city.js";
 import {
+  applyImpact,
+  applyStrike,
+  blocksMove,
+  bodyRadius,
+  crashFromImpact,
+  pickupWeapon,
+  resumeWalking,
+  strikeHit,
+} from "./harm.js";
+import {
   blocksDriving,
   clampZoom,
   createMapView,
@@ -573,6 +583,9 @@ for (let i = 0; i < 48; i++) {
     lateral: (step) => sidewalkLateral(step.segment, side),
     speed: role.kind === "older" ? 0.95 : 1.2 + (i % 4) * 0.08,
     minLength: 40,
+    health: 3,
+    down: false,
+    dead: false,
     rng: mulberry32(900 + i * 17),
     phase: i * 0.73,
     yaw: 0,
@@ -632,6 +645,55 @@ for (let i = 0; i < fleetCount; i++) {
   }
   traffic.push(agent);
 }
+function makeStreetWeapon(id) {
+  const group = new THREE.Group();
+  const mat = (color) =>
+    new THREE.MeshStandardMaterial({ color, roughness: 0.72 });
+  if (id === "pipe") {
+    const mesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.045, 1.15, 8),
+      mat(0x8d9296),
+    );
+    mesh.rotation.z = Math.PI / 2;
+    group.add(mesh);
+  } else if (id === "stick") {
+    const mesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.028, 0.04, 1.05, 6),
+      mat(0x6a4b2f),
+    );
+    mesh.rotation.z = 1.1;
+    group.add(mesh);
+  } else {
+    const mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16, 0), mat(0x6e6a62));
+    mesh.scale.set(1.15, 0.75, 1);
+    group.add(mesh);
+  }
+  return group;
+}
+const weaponDrops = [];
+let heldWeapon = null;
+let heldMesh = null;
+const weaponBase = spawnAnchor
+  ? segmentPoint(
+      spawnAnchor.segment,
+      spawnAnchor.t,
+      sidewalkLateral(spawnAnchor.segment, 1),
+    )
+  : [city.spawn[0] + 2, city.spawn[1]];
+[
+  [0.6, 0.4],
+  [2.4, -0.2],
+  [-1.5, 1.2],
+].forEach((offset, index) => {
+  const id = ["pipe", "stick", "stone"][index];
+  const spec = pickupWeapon(id);
+  const mesh = makeStreetWeapon(id);
+  const x = weaponBase[0] + offset[0];
+  const z = weaponBase[1] + offset[1];
+  mesh.position.set(x, id === "stone" ? 0.16 : 0.22, z);
+  scene.add(mesh);
+  weaponDrops.push({ ...spec, x, z, mesh, taken: false });
+});
 const smokePuffs = [];
 for (let i = 0; i < 40; i++) {
   const material = new THREE.MeshBasicMaterial({
@@ -701,16 +763,20 @@ function renderPlaces() {
       addBox(site, 0.12, 1.8, 2.6, 0x1e3a5f, 0, 2.3, 0);
       addBox(site, 2.4, 0.1, 0.1, 0xb7c0bc, -1.3, 2.6, 0);
       addBox(site, 2.4, 0.1, 0.1, 0xb7c0bc, 1.3, 1.7, 0);
+    } else if (place.kind === "school" || place.kind === "college") {
+      addBox(site, place.kind === "college" ? 8 : 6, 0.4, 5, 0xd8c39a, 0, 0.3, 0);
+      addBox(site, 0.2, place.kind === "college" ? 4.2 : 3.2, 0.2, 0x8d5a3c, 0, 2, 0);
+    } else if (place.kind === "store") {
+      addBox(site, 2.4, 0.12, 1.1, 0x3d6a4a, 0, 2.4, 0);
+      addBox(site, 1.6, 1.1, 0.2, 0xf4efe4, 0, 1.3, 0);
     } else {
       const pitch = new THREE.Mesh(
-        new THREE.PlaneGeometry(26, 16),
+        new THREE.PlaneGeometry(16, 10),
         new THREE.MeshStandardMaterial({ color: 0x3d7a46, roughness: 1 }),
       );
       pitch.rotation.x = -Math.PI / 2;
       pitch.position.y = 0.04;
       site.add(pitch);
-      addBox(site, 22, 0.04, 0.12, 0xf4f4f0, 0, 0.08, 0);
-      addBox(site, 0.12, 0.04, 12, 0xf4f4f0, 0, 0.08, 0);
     }
     const canvas = document.createElement("canvas");
     canvas.width = 256;
@@ -725,7 +791,7 @@ function renderPlaces() {
       new THREE.PlaneGeometry(3.4, 0.85),
       new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(canvas) }),
     );
-    board.position.y = place.kind === "ground" ? 2.2 : 3.7;
+    board.position.y = place.kind === "playground" ? 2.2 : 3.7;
     site.add(board);
     group.add(site);
   }
@@ -780,6 +846,7 @@ let lookYaw = spawnHeading;
 let lookPitch = 0.28;
 let vy = 0;
 let jumpQueued = false;
+const playerLife = { health: 3, down: false, dead: false, downUntil: null };
 let lookDrag = null;
 let previousTime = performance.now();
 let audioContext, toastTimer;
@@ -917,6 +984,11 @@ function reset() {
   vy = 0;
   jumpQueued = false;
   walkVel.set(0, 0, 0);
+  playerLife.health = 3;
+  playerLife.down = false;
+  playerLife.dead = false;
+  playerLife.downUntil = null;
+  avatar.rotation.x = 0;
   walking = false;
   avatar.visible = false;
   avatar.position.y = 0;
@@ -981,6 +1053,107 @@ function collides(x, z, r = 1.4) {
   }
   return false;
 }
+function layMesh(mesh) {
+  mesh.rotation.x = Math.PI / 2;
+  mesh.position.y = 0.2;
+  mesh.userData.walk?.(0, 0);
+}
+function standMesh(mesh) {
+  mesh.rotation.x = 0;
+  mesh.position.y = 0;
+}
+function settlePerson(person, next, now) {
+  if (!next?.changed) return;
+  person.health = next.health ?? 0;
+  person.down = true;
+  person.dead = Boolean(next.dead);
+  if (Number.isFinite(next.x)) person.x = next.x;
+  if (Number.isFinite(next.z)) person.z = next.z;
+  person.downUntil = person.dead ? Infinity : now + 4;
+  layMesh(person.mesh);
+  person.mesh.position.set(person.x, 0.2, person.z);
+}
+function hitPlayer(impact, dirX, dirZ) {
+  if (!walking || playerLife.down) return;
+  const next = applyImpact(
+    {
+      health: playerLife.health,
+      down: false,
+      dead: false,
+      x: avatar.position.x,
+      z: avatar.position.z,
+    },
+    impact,
+    dirX,
+    dirZ,
+  );
+  if (!next.changed) return;
+  playerLife.health = next.health;
+  playerLife.down = true;
+  playerLife.dead = Boolean(next.dead);
+  playerLife.downUntil = next.dead ? Infinity : elapsed + 4;
+  avatar.position.x = next.x;
+  avatar.position.z = next.z;
+  layMesh(avatar);
+  toast(next.dead ? "You went down." : "You were knocked down.");
+}
+function takeOrSwing() {
+  if (!walking || playerLife.dead || playerLife.down) {
+    toast(playerLife.dead ? "You can't get up." : "Get out of the car first.");
+    return;
+  }
+  if (heldWeapon) {
+    swingWeapon();
+    return;
+  }
+  const drop = weaponDrops.find(
+    (item) =>
+      !item.taken &&
+      Math.hypot(item.x - avatar.position.x, item.z - avatar.position.z) < 1.6,
+  );
+  if (!drop) {
+    toast("Nothing here to pick up.");
+    return;
+  }
+  heldWeapon = pickupWeapon(drop.id);
+  drop.taken = true;
+  drop.mesh.visible = false;
+  if (heldMesh) avatar.remove(heldMesh);
+  heldMesh = makeStreetWeapon(drop.id);
+  heldMesh.position.set(0.34, 1.02, 0.12);
+  heldMesh.rotation.y = 0.6;
+  avatar.add(heldMesh);
+  toast(`Picked up a ${heldWeapon.name.toLowerCase()}. Press F to swing.`);
+}
+function swingWeapon() {
+  const fx = -Math.sin(avatar.rotation.y);
+  const fz = -Math.cos(avatar.rotation.y);
+  for (const ped of pedestrians) {
+    if (ped.dead) continue;
+    const dx = ped.x - avatar.position.x;
+    const dz = ped.z - avatar.position.z;
+    const distance = Math.hypot(dx, dz) || 1;
+    const hit = strikeHit({
+      weapon: heldWeapon,
+      distance,
+      facingDot: (dx * fx + dz * fz) / distance,
+    });
+    if (!hit.hit) continue;
+    const next = applyStrike(
+      { health: ped.health ?? 3, down: ped.down, dead: ped.dead, x: ped.x, z: ped.z },
+      hit,
+    );
+    settlePerson(ped, next, elapsed);
+    toast(
+      next.dead
+        ? `${ped.mesh.userData.name} went down.`
+        : `Hit ${ped.mesh.userData.name}.`,
+    );
+    return true;
+  }
+  toast("Swung and missed.");
+  return false;
+}
 function startJob() {
   if (job && ["pickup", "delivery"].includes(job.phase)) {
     toast("Finish the current delivery first.");
@@ -1023,8 +1196,11 @@ function action(key) {
     toast(paused ? "Paused · press P to resume" : "Back on the road");
   }
   if (paused || !active) return;
-  if (key === "e") toggleWalk();
-  if (key === "f") interactJob();
+  if (key === "e" && !playerLife.dead) toggleWalk();
+  if (key === "f") {
+    if (job && ["pickup", "delivery"].includes(job.phase)) interactJob();
+    else takeOrSwing();
+  }
   if (key === "j") startJob();
   if (key === "c") {
     view = (view + 1) % 3;
@@ -1394,7 +1570,17 @@ function drawMap() {
   if (mapLayers.places) {
     for (const place of city.places || []) {
       map.fillStyle =
-        place.kind === "fuel" ? "#e07a3d" : place.kind === "gym" ? "#7eb6d6" : "#67b36a";
+        place.kind === "fuel"
+          ? "#e07a3d"
+          : place.kind === "gym"
+            ? "#7eb6d6"
+            : place.kind === "school"
+              ? "#e6c15a"
+              : place.kind === "college"
+                ? "#d08a4c"
+                : place.kind === "store"
+                  ? "#f4efe4"
+                  : "#67b36a";
       map.fillRect(sx(place.point[0]) - 4, sy(place.point[1]) - 4, 8, 8);
       if (mapView.size === "max") {
         map.fillStyle = "#f6f3e6";
@@ -1445,11 +1631,17 @@ function animate() {
     const drive = !blocksDriving(mapView);
     const p = actor().position;
     if (walking) {
-      const forward = drive
+      if (playerLife.down && resumeWalking(playerLife, elapsed)) {
+        playerLife.down = false;
+        playerLife.downUntil = null;
+        standMesh(avatar);
+      }
+      const mobile = resumeWalking(playerLife, elapsed);
+      const forward = mobile && drive
         ? (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
           (keys.has("s") || keys.has("arrowdown") ? 1 : 0)
         : 0;
-      const strafe = drive
+      const strafe = mobile && drive
         ? (keys.has("d") || keys.has("arrowright") ? 1 : 0) -
           (keys.has("a") || keys.has("arrowleft") ? 1 : 0)
         : 0;
@@ -1469,7 +1661,7 @@ function animate() {
       walkVel.x += (wishX - walkVel.x) * blend;
       walkVel.z += (wishZ - walkVel.z) * blend;
       if (!forward && !strafe) walkVel.multiplyScalar(Math.exp(-dt * 16));
-      const hop = beginJump({ queued: jumpQueued, y: p.y, vy });
+      const hop = beginJump({ queued: mobile && jumpQueued, y: p.y, vy });
       vy = hop.vy;
       jumpQueued = hop.queued;
       vy -= 24 * dt;
@@ -1482,10 +1674,16 @@ function animate() {
       const nz = p.z + walkVel.z * dt;
       speed = Math.hypot(walkVel.x, walkVel.z);
       const blocked =
+        !mobile ||
         collides(nx, nz, 0.4) ||
-        traffic.some(
-          (t) => Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) < 1.8,
-        );
+        blocksMove(nx, nz, 0.45, [
+          ...traffic.map((t) => ({
+            x: t.x,
+            z: t.z,
+            radius: bodyRadius(t.kind),
+          })),
+          ...pedestrians.map((ped) => ({ x: ped.x, z: ped.z, radius: 0.45 })),
+        ]);
       if (!blocked) {
         p.x = nx;
         p.z = nz;
@@ -1521,16 +1719,44 @@ function animate() {
           steering * dt * Math.min(1.2, Math.abs(speed) * 0.12) * Math.sign(speed || 1);
       const nx = p.x - Math.sin(yaw) * speed * dt,
         nz = p.z - Math.cos(yaw) * speed * dt;
-      const hitTraffic = traffic.some(
-        (t) => Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) < 3,
+      const hitTraffic = blocksMove(
+        nx,
+        nz,
+        bodyRadius("player-car"),
+        traffic.map((t) => ({ x: t.x, z: t.z, radius: bodyRadius(t.kind) })),
       );
-      const hitPed = pedestrians.some(
-        (t) => Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) < 1.7,
+      const victim = pedestrians.find(
+        (t) =>
+          Math.hypot(nx - t.x, nz - t.z) < bodyRadius("player-car") + bodyRadius("person"),
       );
-      if (!collides(nx, nz, 1.4) && !hitTraffic && !hitPed) {
+      if (victim && !victim.down && Math.abs(speed) >= 1.5) {
+        const dx = nx - p.x,
+          dz = nz - p.z,
+          len = Math.hypot(dx, dz) || 1;
+        const impact = crashFromImpact(speed);
+        settlePerson(
+          victim,
+          applyImpact(
+            {
+              health: victim.health ?? 3,
+              down: false,
+              dead: false,
+              x: victim.x,
+              z: victim.z,
+            },
+            impact,
+            dx / len,
+            dz / len,
+          ),
+          elapsed,
+        );
+        speed *= impact.retain;
+      }
+      if (!collides(nx, nz, 1.4) && !hitTraffic && !victim) {
         p.set(nx, 0, nz);
         distanceTravelled += Math.abs(speed) * dt;
-      } else speed = -speed * 0.15;
+      } else if (!hitTraffic && !victim) speed = -speed * 0.15;
+      else speed = 0;
       player.rotation.y = yaw;
       emitSmoke(player, Math.abs(speed), dt, player.userData);
     }
@@ -1542,16 +1768,61 @@ function animate() {
     for (const agent of traffic) {
       if (!agent.points) continue;
       const probe = advanceAlong(agent, dt);
-      const gap = agent.kind === "motorcycle" ? 2.4 : 4.2;
-      const blocked =
-        Math.hypot(probe.x - p.x, probe.z - p.z) <
-          (agent.kind === "motorcycle" ? 4.6 : 6.4) ||
-        traffic.some(
-          (other) =>
-            other !== agent &&
-            Math.hypot(probe.x - other.x, probe.z - other.z) < gap,
+      const radius = bodyRadius(agent.kind);
+      let victim = null;
+      for (const ped of pedestrians) {
+        if (Math.hypot(probe.x - ped.x, probe.z - ped.z) < radius + 0.45) {
+          victim = ped;
+          break;
+        }
+      }
+      const playerHit =
+        walking &&
+        !playerLife.down &&
+        Math.hypot(probe.x - avatar.position.x, probe.z - avatar.position.z) <
+          radius + 0.45;
+      const blocked = blocksMove(probe.x, probe.z, radius, [
+        ...traffic
+          .filter((other) => other !== agent)
+          .map((other) => ({
+            x: other.x,
+            z: other.z,
+            radius: bodyRadius(other.kind),
+          })),
+        walking
+          ? { x: avatar.position.x, z: avatar.position.z, radius: 0.45 }
+          : { x: player.position.x, z: player.position.z, radius: bodyRadius("player-car") },
+      ]);
+      if (victim && !victim.down) {
+        const dx = probe.x - agent.x,
+          dz = probe.z - agent.z,
+          len = Math.hypot(dx, dz) || 1;
+        const impact = crashFromImpact(agent.speed);
+        settlePerson(
+          victim,
+          applyImpact(
+            {
+              health: victim.health ?? 3,
+              down: false,
+              dead: false,
+              x: victim.x,
+              z: victim.z,
+            },
+            impact,
+            dx / len,
+            dz / len,
+          ),
+          elapsed,
         );
-      if (!blocked) {
+        agent.speed *= impact.retain;
+      } else if (playerHit) {
+        const dx = probe.x - agent.x,
+          dz = probe.z - agent.z,
+          len = Math.hypot(dx, dz) || 1;
+        const impact = crashFromImpact(agent.speed);
+        hitPlayer(impact, dx / len, dz / len);
+        agent.speed *= impact.retain;
+      } else if (!blocked && !victim) {
         agent.x = probe.x;
         agent.z = probe.z;
         agent.index = probe.index;
@@ -1574,13 +1845,38 @@ function animate() {
       }
     }
     for (const ped of pedestrians) {
+      if (ped.down && resumeWalking(ped, elapsed)) {
+        ped.down = false;
+        ped.downUntil = null;
+        standMesh(ped.mesh);
+      }
+      if (!resumeWalking(ped, elapsed)) {
+        ped.mesh.position.set(ped.x || 0, 0.2, ped.z || 0);
+        ped.mesh.userData.walk?.(0, 0);
+        continue;
+      }
       if (ped.points) {
         const probe = advanceAlong(ped, dt);
-        ped.x = probe.x;
-        ped.z = probe.z;
-        ped.index = probe.index;
-        ped.yaw = probe.yaw;
-        if (probe.arrived) beginTrip(ped, ped.endNode);
+        const bodies = traffic.map((t) => ({
+          x: t.x,
+          z: t.z,
+          radius: bodyRadius(t.kind),
+        }));
+        for (const other of pedestrians) {
+          if (other !== ped) bodies.push({ x: other.x, z: other.z, radius: 0.45 });
+        }
+        bodies.push({
+          x: actor().position.x,
+          z: actor().position.z,
+          radius: walking ? 0.45 : bodyRadius("player-car"),
+        });
+        if (!blocksMove(probe.x, probe.z, 0.45, bodies)) {
+          ped.x = probe.x;
+          ped.z = probe.z;
+          ped.index = probe.index;
+          ped.yaw = probe.yaw;
+          if (probe.arrived) beginTrip(ped, ped.endNode);
+        }
       }
       ped.mesh.position.set(ped.x || 0, 0, ped.z || 0);
       ped.mesh.rotation.y = ped.yaw || 0;
@@ -1702,9 +1998,11 @@ function animate() {
       Math.min(100, (Math.abs(speed) / 38) * 100) + "%";
     $("gear").textContent = speed < -0.2 ? "R" : speed > 0.2 ? "D" : "N";
     $("mode").textContent = walking
-      ? keys.has("shift")
-        ? "ON FOOT / RUN"
-        : "ON FOOT / WALK"
+      ? playerLife.down
+        ? "ON FOOT / DOWN"
+        : keys.has("shift")
+          ? "ON FOOT / RUN"
+          : "ON FOOT / WALK"
       : player.userData.label || "COMPACT SUV";
     const nearest = city.stops.reduce((a, b) =>
       Math.hypot(p.x - a.point[0], p.z - a.point[1]) <
@@ -1764,11 +2062,96 @@ window.__pune = {
         name: place.name,
         kind: place.kind,
       })),
+      infill: city.infill || 0,
+      surveyed: city.surveyed || city.buildings.length,
+      playerDown: playerLife.down,
+      playerDead: playerLife.dead,
+      held: heldWeapon?.id || null,
+      downPeople: pedestrians.filter((ped) => ped.down).length,
+      deadPeople: pedestrians.filter((ped) => ped.dead).length,
       mapSize: mapView.size,
       mapFollow: mapView.follow,
       mapFocusX: mapView.focusX,
       mapFocusZ: mapView.focusZ,
       mapZoom: mapView.zoom,
     };
+  },
+  debug: {
+    armCrash() {
+      const car = traffic.find((agent) => agent.kind === "car" && agent.points);
+      const ped = pedestrians.find((person) => !person.down);
+      const dx = -Math.sin(car.yaw || 0),
+        dz = -Math.cos(car.yaw || 0);
+      ped.x = car.x + dx * 0.7;
+      ped.z = car.z + dz * 0.7;
+      ped.health = 3;
+      ped.down = false;
+      ped.dead = false;
+      ped.downUntil = null;
+      standMesh(ped.mesh);
+      ped.mesh.position.set(ped.x, 0, ped.z);
+      car.speed = 14;
+      return { name: ped.mesh.userData.name, x: ped.x, z: ped.z };
+    },
+    person(name) {
+      const ped = pedestrians.find((person) => person.mesh.userData.name === name);
+      return ped
+        ? {
+            down: ped.down,
+            dead: ped.dead,
+            health: ped.health,
+            y: ped.mesh.position.y,
+            rotationX: ped.mesh.rotation.x,
+          }
+        : null;
+    },
+    grab(id = "pipe") {
+      walking = true;
+      avatar.visible = true;
+      playerLife.down = false;
+      playerLife.dead = false;
+      heldWeapon = pickupWeapon(id);
+      if (heldMesh) avatar.remove(heldMesh);
+      heldMesh = makeStreetWeapon(id);
+      heldMesh.position.set(0.34, 1.02, 0.12);
+      avatar.add(heldMesh);
+      const drop = weaponDrops.find((item) => item.id === id);
+      if (drop) {
+        drop.taken = true;
+        drop.mesh.visible = false;
+      }
+      return heldWeapon?.id || null;
+    },
+    focus(name) {
+      const ped = pedestrians.find((person) => person.mesh.userData.name === name);
+      if (!ped) return false;
+      walking = true;
+      avatar.visible = true;
+      avatar.position.set(ped.x + 2.4, 0, ped.z + 3.2);
+      lookYaw = Math.atan2(-(ped.x - avatar.position.x), -(ped.z - avatar.position.z));
+      lookPitch = 0.42;
+      return true;
+    },
+    swingFront() {
+      const ped = pedestrians.find((person) => !person.down);
+      const fx = -Math.sin(avatar.rotation.y);
+      const fz = -Math.cos(avatar.rotation.y);
+      ped.x = avatar.position.x + fx * 1.1;
+      ped.z = avatar.position.z + fz * 1.1;
+      ped.health = 3;
+      ped.down = false;
+      ped.dead = false;
+      ped.downUntil = null;
+      standMesh(ped.mesh);
+      ped.mesh.position.set(ped.x, 0, ped.z);
+      const hit = swingWeapon();
+      return {
+        hit,
+        name: ped.mesh.userData.name,
+        down: ped.down,
+        dead: ped.dead,
+        health: ped.health,
+      };
+    },
   },
 };

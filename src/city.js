@@ -56,7 +56,7 @@ export function fallbackCity() {
     buildings,
     spawn: [-5, 70],
     stops,
-    places: ensureCivicPlaces([], stops),
+    places: [],
   };
 }
 // Survey constants from public/data/pune-osm.json. See docs/MEASUREMENTS.md.
@@ -163,6 +163,9 @@ export function buildingSizeFromTags(tags = {}) {
 }
 
 export function placeKindFromTags(tags = {}) {
+  if (tags.amenity === "school") return "school";
+  if (tags.amenity === "college" || tags.amenity === "university") return "college";
+  if (tags.leisure === "playground") return "playground";
   if (tags.amenity === "fuel") return "fuel";
   if (
     tags.amenity === "gym" ||
@@ -170,15 +173,23 @@ export function placeKindFromTags(tags = {}) {
     tags.leisure === "fitness_station"
   )
     return "gym";
-  if (
-    tags.leisure === "pitch" ||
-    tags.leisure === "playground" ||
-    tags.leisure === "sports_hall" ||
-    tags.leisure === "stadium" ||
-    tags.leisure === "track"
-  )
-    return "ground";
+  if (tags.shop) return "store";
   return null;
+}
+
+const PLACE_LABEL = {
+  school: "School",
+  college: "College",
+  store: "Store",
+  playground: "Playground",
+  fuel: "Fuel",
+  gym: "Gym",
+};
+
+// The map label is the OpenStreetMap name. An untagged kind is absent.
+export function placeNameFromTags(tags = {}, kind) {
+  const named = String(tags.name || tags["name:en"] || "").trim();
+  return named || PLACE_LABEL[kind] || "Place";
 }
 
 export function elementPoint(element) {
@@ -197,86 +208,29 @@ export function elementPoint(element) {
   return null;
 }
 
-export function districtOf(point, stops = []) {
-  let best = stops[0],
-    distance = Infinity;
-  for (const stop of stops) {
-    const d = Math.hypot(point[0] - stop.point[0], point[1] - stop.point[1]);
-    if (d < distance) {
-      distance = d;
-      best = stop;
-    }
+export function placesFromElements(elements) {
+  const places = [];
+  for (const element of elements || []) {
+    const kind = placeKindFromTags(element.tags);
+    if (!kind) continue;
+    const point = elementPoint(element);
+    if (!point) continue;
+    places.push({
+      kind,
+      point,
+      osm: true,
+      name: placeNameFromTags(element.tags, kind),
+    });
   }
-  const name = String(best?.name || "").toUpperCase();
-  if (name.includes("KOTHRUD")) return "Kothrud";
-  if (name.includes("FC")) return "FC";
-  return "Deccan";
-}
-
-export function civicName(kind, district, used) {
-  const noun = kind === "fuel" ? "Fuel" : kind === "gym" ? "Gym" : "Ground";
-  let name = `${district} ${noun}`;
-  if (!used.has(name)) {
-    used.add(name);
-    return name;
-  }
-  let n = 2;
-  while (used.has(`${name} ${n}`)) n += 1;
-  name = `${name} ${n}`;
-  used.add(name);
-  return name;
-}
-
-// OSM sites keep their surveyed point. Missing kinds get an ordinary site
-// in each of FC Road, Deccan, and Kothrud. Names are not business marks.
-export function ensureCivicPlaces(rawPlaces, stops) {
-  const places = rawPlaces.map((place) => ({ ...place }));
-  const offsets = {
-    fuel: [36, 18],
-    gym: [-28, 22],
-    ground: [18, -34],
-  };
-  for (const kind of ["fuel", "gym", "ground"]) {
-    for (const stop of stops) {
-      const district = districtOf(stop.point, stops);
-      const exists = places.some(
-        (place) =>
-          place.kind === kind && districtOf(place.point, stops) === district,
-      );
-      if (exists) continue;
-      places.push({
-        kind,
-        point: [
-          stop.point[0] + offsets[kind][0],
-          stop.point[1] + offsets[kind][1],
-        ],
-        osm: false,
-      });
-    }
-  }
-  const used = new Set();
-  return places.map((place) => {
-    const district = districtOf(place.point, stops);
-    return {
-      ...place,
-      district,
-      name: civicName(place.kind, district, used),
-    };
-  });
+  return places;
 }
 
 export function parseOSM(data) {
   if (!Array.isArray(data.elements))
     throw Error("Invalid OpenStreetMap response");
   const roads = [],
-    buildings = [],
-    rawPlaces = [];
+    buildings = [];
   for (const e of data.elements) {
-    const kind = placeKindFromTags(e.tags);
-    if (kind) {
-      const point = elementPoint(e);
-      if (point) rawPlaces.push({ kind, point, osm: true });
-    }
     if (!e.geometry?.length || !e.tags) continue;
     const points = e.geometry.map((p) => project(p.lat, p.lon));
     if (
@@ -348,13 +302,18 @@ export function parseOSM(data) {
     { name: "KOTHRUD", point: nearest(project(18.5074, 73.8077)) },
     { name: "DECCAN GYMKHANA", point: spawn },
   ];
+  const surveyed = buildings.length;
+  const infill = fillBuildingGaps(buildings, roads);
+  for (const extra of infill) buildings.push(extra);
   return {
     source: "OpenStreetMap",
     roads,
     buildings,
     spawn,
     stops,
-    places: ensureCivicPlaces(rawPlaces, stops),
+    places: placesFromElements(data.elements),
+    surveyed,
+    infill: infill.length,
   };
 }
 export function segmentDistance(x, z, a, b) {
@@ -382,6 +341,185 @@ export function inside(x, z, poly) {
   }
   return hit;
 }
+
+function footprintBounds(points) {
+  let minX = Infinity,
+    maxX = -Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
+  for (const p of points) {
+    if (p[0] < minX) minX = p[0];
+    if (p[0] > maxX) maxX = p[0];
+    if (p[1] < minZ) minZ = p[1];
+    if (p[1] > maxZ) maxZ = p[1];
+  }
+  return { minX, maxX, minZ, maxZ };
+}
+
+function coverGrid(grid, cell, box, item) {
+  const x0 = Math.floor(box.minX / cell),
+    x1 = Math.floor(box.maxX / cell),
+    z0 = Math.floor(box.minZ / cell),
+    z1 = Math.floor(box.maxZ / cell);
+  for (let x = x0; x <= x1; x++)
+    for (let z = z0; z <= z1; z++) {
+      const key = `${x}:${z}`;
+      let list = grid.get(key);
+      if (!list) grid.set(key, (list = []));
+      list.push(item);
+    }
+}
+
+function gridNear(grid, cell, x, z) {
+  const cx = Math.floor(x / cell),
+    cz = Math.floor(z / cell),
+    out = [];
+  for (let ix = cx - 1; ix <= cx + 1; ix++)
+    for (let iz = cz - 1; iz <= cz + 1; iz++) {
+      const list = grid.get(`${ix}:${iz}`);
+      if (list) out.push(...list);
+    }
+  return out;
+}
+
+// Original blocks in the holes between surveyed footprints. Each one keeps a
+// narrow gap from its neighbours and stays off the carriageway.
+export function fillBuildingGaps(buildings, roads) {
+  const cell = 28;
+  const gap = 0.85;
+  const boxes = [];
+  const grid = new Map();
+  for (let i = 0; i < buildings.length; i++) {
+    const building = buildings[i];
+    if (!building.points || building.points.length < 3) continue;
+    const box = footprintBounds(building.points);
+    const item = { ...box, building, i };
+    boxes.push(item);
+    coverGrid(grid, cell, box, item);
+  }
+  const roadGrid = new Map();
+  for (const road of roads || []) {
+    const half = Math.max(1.6, (road.width || 7) / 2);
+    const pts = road.points || [];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1],
+        b = pts[i];
+      const seg = {
+        a,
+        b,
+        half,
+        minX: Math.min(a[0], b[0]) - half,
+        maxX: Math.max(a[0], b[0]) + half,
+        minZ: Math.min(a[1], b[1]) - half,
+        maxZ: Math.max(a[1], b[1]) + half,
+      };
+      coverGrid(roadGrid, cell, seg, seg);
+    }
+  }
+  const onRoad = (x, z) => {
+    for (const seg of gridNear(roadGrid, cell, x, z)) {
+      if (x < seg.minX || x > seg.maxX || z < seg.minZ || z > seg.maxZ) continue;
+      if (segmentDistance(x, z, seg.a, seg.b) < seg.half) return true;
+    }
+    return false;
+  };
+  const occupied = (x, z, ignore) => {
+    for (const item of gridNear(grid, cell, x, z)) {
+      if (item === ignore) continue;
+      if (x < item.minX || x > item.maxX || z < item.minZ || z > item.maxZ) continue;
+      if (inside(x, z, item.building.points)) return item;
+    }
+    return null;
+  };
+  const infill = [];
+  const used = new Set();
+  const made = new Map();
+  for (const item of boxes) {
+    if ((made.get(item.i) || 0) >= 2) continue;
+    const points = item.building.points;
+    const closed =
+      points.length > 3 &&
+      Math.hypot(points[0][0] - points.at(-1)[0], points[0][1] - points.at(-1)[1]) < 0.05;
+    const n = closed ? points.length - 1 : points.length;
+    for (let i = 0; i < n && (made.get(item.i) || 0) < 2; i++) {
+      const p0 = points[i],
+        p1 = points[(i + 1) % n];
+      const dx = p1[0] - p0[0],
+        dz = p1[1] - p0[1],
+        len = Math.hypot(dx, dz);
+      if (len < 4.5 || len > 80) continue;
+      const mx = (p0[0] + p1[0]) / 2,
+        mz = (p0[1] + p1[1]) / 2;
+      let nx = -dz / len,
+        nz = dx / len;
+      if (inside(mx + nx * 0.6, mz + nz * 0.6, points)) {
+        nx = -nx;
+        nz = -nz;
+      }
+      if (onRoad(mx + nx * 1.4, mz + nz * 1.4)) continue;
+      let clear = 1.1;
+      let neighbor = null;
+      for (const d of [3.2, 6, 9, 12, 15]) {
+        const x = mx + nx * d,
+          z = mz + nz * d;
+        if (onRoad(x, z)) break;
+        const hit = occupied(x, z, item);
+        if (hit) {
+          neighbor = hit;
+          break;
+        }
+        clear = d;
+      }
+      if (!neighbor || clear < 3.4 || clear > 14) continue;
+      const outer = clear - 0.45;
+      const inner = gap;
+      if (outer - inner < 2.3) continue;
+      const depth = outer - inner;
+      const along = Math.min(len - 1.4, 11);
+      if (along < 3.6) continue;
+      const cx = mx + nx * (inner + depth / 2);
+      const cz = mz + nz * (inner + depth / 2);
+      const key = `${Math.round(cx / 4)}:${Math.round(cz / 4)}`;
+      if (used.has(key)) continue;
+      const hx = (dx / len) * (along / 2),
+        hz = (dz / len) * (along / 2),
+        px = nx * (depth / 2),
+        pz = nz * (depth / 2);
+      const footprint = [
+        [cx - hx - px, cz - hz - pz],
+        [cx + hx - px, cz + hz - pz],
+        [cx + hx + px, cz + hz + pz],
+        [cx - hx + px, cz - hz + pz],
+      ];
+      if (footprint.some(([x, z]) => onRoad(x, z) || occupied(x, z, null))) continue;
+      if (onRoad(cx, cz) || occupied(cx, cz, null)) continue;
+      const height = Math.min(
+        36,
+        Math.max(
+          3,
+          ((item.building.height || 9) + (neighbor.building.height || 9)) / 2,
+        ),
+      );
+      const extra = {
+        points: footprint,
+        height,
+        floors: Math.max(1, Math.round(height / STOREY_METERS)),
+        heightSource: "infill",
+        kind: "yes",
+        color: ((infill.length * 17) % 100) / 100,
+        infill: true,
+      };
+      const bounds = footprintBounds(footprint);
+      const stored = { ...bounds, building: extra, i: -1 - infill.length };
+      coverGrid(grid, cell, bounds, stored);
+      used.add(key);
+      made.set(item.i, (made.get(item.i) || 0) + 1);
+      infill.push(extra);
+    }
+  }
+  return infill;
+}
+
 export function makeCar(color = 0xeee6cc, rickshaw = false) {
   const g = new THREE.Group();
   const box = (w, h, d, c, x, y, z) => {
