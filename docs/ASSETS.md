@@ -18,6 +18,10 @@ The nine clips work without browser-installed voices or a runtime speech service
 
 To regenerate the clips, use Python 3, `edge-tts==7.3.1`, Node.js and `scripts/generate-voices.py`. The script uses inherited proxy settings and preserves certificate verification. This is an optional asset-authoring step; normal installation/startup does not require Python or the external speech service. Review the speech provider's applicable terms for your distribution. Replace these clips with your own original Marathi/Hindi recordings for an authentic local performance.
 
+## City services
+
+Police sedans, ambulances, and fire engines are original procedural meshes: flat colours, a plain side band, a red cross built from two boxes, and a ladder of cylinders. They carry no copied livery, crest, badge, or wordmark. Sirens are two-tone oscillators synthesized in the Web Audio API. They are not recordings from another game. Officers on rounds and the people who wander use the same original person mesh as other residents, with a cap and lathi or a slumped torso.
+
 ## Exact FC Road buildings
 
 The chosen reference target is Goodluck Chowk toward Fergusson College. Building footprints and tagged heights come from the OpenStreetMap extract; road widths come from `width` or `lanes` tags, with class defaults only when both are missing. See [measured streets](MEASUREMENTS.md). Facades, awning depth, shop lettering and tree spacing are original geometry, not copied photos. The renderer still uses a flat terrain surface. A 4K photo is a 3840 × 2160 render, not a claim of photorealistic assets.
