@@ -11,8 +11,19 @@ import {
   segmentDistance,
   inside,
   makeCar,
+  makeMotorcycle,
   person,
   origin,
+  splitRoadsAtJunctions,
+  roadAdjacency,
+  planTrip,
+  tripPolyline,
+  advanceAlong,
+  chooseGoal,
+  mulberry32,
+  STREET_FLEET,
+  laneLateral,
+  sidewalkLateral,
 } from "./city.js";
 const $ = (id) => document.getElementById(id);
 let city = fallbackCity();
@@ -396,72 +407,175 @@ player.position.set(city.spawn[0], 0, city.spawn[1]);
 const avatar = person(3);
 avatar.visible = false;
 scene.add(avatar);
-const localRoads = roadSegments.filter(
-  (r) => r.length > 25 && segmentDistance(...city.spawn, r.a, r.b) < 300,
+const driveSegments = splitRoadsAtJunctions(roadSegments);
+const driveAdj = roadAdjacency(driveSegments);
+const localDrive = driveSegments.filter(
+  (r) => r.length > 16 && segmentDistance(...city.spawn, r.a, r.b) < 320,
 );
-const populationRoads = localRoads.length ? localRoads : roadSegments;
-const pedestrians = [];
-for (let i = 0; i < 72; i++) {
-  const r = populationRoads[(i * 7) % populationRoads.length],
-    t = 0.15 + (i % 7) * 0.1,
-    dx = (r.b[0] - r.a[0]) / r.length,
-    dz = (r.b[1] - r.a[1]) / r.length,
-    offset = r.width / 2 + 1.7;
-  const p = person(i);
-  if (i > 0 && i % 12 === 1) {
-    p.scale.setScalar(0.68);
-    p.userData.child = true;
+const populationRoads = localDrive.length ? localDrive : driveSegments;
+function closestOn(segments, x, z) {
+  let best = null;
+  for (const segment of segments) {
+    const dx = segment.b[0] - segment.a[0],
+      dz = segment.b[1] - segment.a[1],
+      len2 = dx * dx + dz * dz || 1;
+    const t = Math.max(
+      0.08,
+      Math.min(0.92, ((x - segment.a[0]) * dx + (z - segment.a[1]) * dz) / len2),
+    );
+    const d = Math.hypot(segment.a[0] + dx * t - x, segment.a[1] + dz * t - z);
+    if (!best || d < best.d) best = { segment, t, d };
   }
-  const start = new THREE.Vector3(
-    r.a[0] + (r.b[0] - r.a[0]) * t + dz * offset,
-    0,
-    r.a[1] + (r.b[1] - r.a[1]) * t - dx * offset,
-  );
-  if (p.userData.child && pedestrians.length) {
-    start.copy(pedestrians[pedestrians.length - 1].start);
-    start.x += 0.85;
-  }
-  p.position.copy(start);
-  scene.add(p);
-  pedestrians.push({
-    mesh: p,
-    start,
-    angle: r.angle,
-    phase: p.userData.child ? i - 1 : i,
-  });
+  return best;
 }
-// Put a resident within conversational reach of the starting point.
-pedestrians[0].start.set(city.spawn[0] + 5, 0, city.spawn[1] - 5);
-const adjacency = new Map();
-const nodeKey = (p) => p.map((v) => v.toFixed(1)).join(",");
-for (const r of roadSegments)
-  for (const end of [r.a, r.b]) {
-    const key = nodeKey(end);
-    if (!adjacency.has(key)) adjacency.set(key, []);
-    adjacency.get(key).push(r);
+function beginTrip(agent, atNode = null) {
+  if (!Number.isFinite(agent.x)) {
+    const lateral = agent.lateral({
+      segment: agent.segment,
+      direction: agent.direction || 1,
+    });
+    const spot = segmentPointSafe(agent.segment, agent.t ?? 0.4, lateral);
+    agent.x = spot[0];
+    agent.z = spot[1];
   }
-const traffic = [];
-for (let i = 0; i < 24; i++) {
-  const r = populationRoads[(i * 11) % populationRoads.length];
-  if (r.length < 30) continue;
-  const m = makeCar(
-    [0xa7b7b3, 0xe3dac4, 0x678e92, 0xa4523f][i % 4],
-    i % 4 === 0,
+  const fromX = agent.x;
+  const fromZ = agent.z;
+  const goal = chooseGoal(
+    populationRoads,
+    [fromX, fromZ],
+    Math.max(24, agent.minLength * 0.75),
+    agent.rng,
   );
-  scene.add(m);
-  traffic.push({
-    mesh: m,
-    road: r,
-    t: (i * 0.173) % 1,
-    direction: i % 2 ? 1 : -1,
+  const trip = planTrip({
+    adjacency: driveAdj,
+    fromSegment: agent.segment,
+    fromT: agent.t ?? 0.4,
+    direction: agent.direction ?? 1,
+    atNode,
+    goal,
+    minLength: agent.minLength,
+    rng: agent.rng,
   });
+  const points = tripPolyline(trip, (step) => agent.lateral(step));
+  if (atNode && Number.isFinite(agent.x)) points.unshift([agent.x, agent.z]);
+  if (points.length < 2) return;
+  agent.points = points;
+  agent.index = 0;
+  agent.goal = goal;
+  agent.trip = trip;
+  agent.segment = trip.endSegment;
+  agent.endNode = trip.endNode;
+  if (!atNode) {
+    agent.x = points[0][0];
+    agent.z = points[0][1];
+  }
+  const dx = points[Math.min(1, points.length - 1)][0] - points[0][0];
+  const dz = points[Math.min(1, points.length - 1)][1] - points[0][1];
+  if (Math.hypot(dx, dz) > 0.05) agent.yaw = Math.atan2(-dx, -dz);
+  agent.mesh.position.set(agent.x, 0, agent.z);
+  agent.mesh.rotation.y = agent.yaw || 0;
+  agent.arrived = false;
+}
+const pedestrians = [];
+const spawnAnchor = closestOn(populationRoads, city.spawn[0], city.spawn[1]);
+for (let i = 0; i < 72; i++) {
+  const mesh = person(i);
+  const anchored = i === 0 && spawnAnchor;
+  const segment = anchored
+    ? spawnAnchor.segment
+    : populationRoads[(i * 5) % populationRoads.length];
+  const t = anchored ? spawnAnchor.t : 0.12 + ((i * 17) % 70) / 100;
+  let side = i % 2 ? 1 : -1;
+  if (anchored) {
+    const left = sidewalkLateral(segment, 1);
+    const a = segmentPointSafe(segment, t, left);
+    const b = segmentPointSafe(segment, t, -left);
+    const da = Math.hypot(a[0] - city.spawn[0], a[1] - city.spawn[1]);
+    const db = Math.hypot(b[0] - city.spawn[0], b[1] - city.spawn[1]);
+    side = da <= db ? 1 : -1;
+  }
+  const role = mesh.userData.role || {};
+  const agent = {
+    mesh,
+    kind: "person",
+    segment,
+    t,
+    direction: t < 0.55 ? 1 : -1,
+    side,
+    lateral: (step) => sidewalkLateral(step.segment, side),
+    speed: role.kind === "older" ? 0.92 : 1.15 + (i % 5) * 0.07,
+    minLength: 34,
+    rng: mulberry32(900 + i * 17),
+    phase: i * 0.73,
+    yaw: 0,
+  };
+  scene.add(mesh);
+  beginTrip(agent);
+  pedestrians.push(agent);
+}
+function segmentPointSafe(segment, t, lateral) {
+  const len = segment.length || 1;
+  const dx = (segment.b[0] - segment.a[0]) / len,
+    dz = (segment.b[1] - segment.a[1]) / len;
+  return [
+    segment.a[0] + (segment.b[0] - segment.a[0]) * t - dz * lateral,
+    segment.a[1] + (segment.b[1] - segment.a[1]) * t + dx * lateral,
+  ];
+}
+const traffic = [];
+const bikeColors = [0xb4332a, 0x1e1e1e, 0x1d4e89, 0xc5c8cc, 0x2f6b45, 0x8a3b2f];
+const carColors = [0xa7b7b3, 0xe3dac4, 0x678e92, 0xa4523f];
+const riderSkin = [0xc4926a, 0xd4a87c, 0xb88962, 0xe2b890, 0xe8c4a2];
+const homeRoad = closestOn(populationRoads, city.spawn[0], city.spawn[1]);
+for (let i = 0; i < STREET_FLEET.cars + STREET_FLEET.motorcycles; i++) {
+  const kind = i < STREET_FLEET.motorcycles ? "motorcycle" : "car";
+  const lead = i < 14 && homeRoad && homeRoad.segment.length > 24;
+  const segment = lead
+    ? homeRoad.segment
+    : populationRoads[(i * 3 + 1) % populationRoads.length];
+  if (!segment || segment.length < 12) continue;
+  const mesh =
+    kind === "motorcycle"
+      ? makeMotorcycle(bikeColors[i % bikeColors.length], riderSkin[i % riderSkin.length])
+      : makeCar(carColors[i % carColors.length], i % 5 === 0);
+  let t = 0.08 + ((i * 13) % 80) / 100;
+  let direction = i % 2 ? 1 : -1;
+  if (lead) {
+    const roomAhead = 1 - homeRoad.t;
+    direction = roomAhead >= homeRoad.t ? 1 : -1;
+    const along = (22 + i * 7) / segment.length;
+    t = direction === 1
+      ? Math.min(0.92, homeRoad.t + along)
+      : Math.max(0.08, homeRoad.t - along);
+  }
+  const agent = {
+    mesh,
+    kind,
+    segment,
+    t,
+    direction,
+    lateral: (step) => laneLateral(step.segment, kind, step.direction),
+    speed: kind === "motorcycle" ? 8.4 + (i % 5) * 0.35 : 6.6 + (i % 4) * 0.3,
+    minLength: 60,
+    rng: mulberry32(4000 + i * 29),
+    yaw: 0,
+  };
+  scene.add(mesh);
+  beginTrip(agent);
+  if (Math.hypot(agent.x - city.spawn[0], agent.z - city.spawn[1]) < 16) {
+    const skip = advanceAlong(agent, 20 / Math.max(agent.speed, 1));
+    agent.x = skip.x;
+    agent.z = skip.z;
+    agent.index = skip.index;
+    agent.yaw = skip.yaw;
+    agent.mesh.position.set(agent.x, 0, agent.z);
+    agent.mesh.rotation.y = agent.yaw || 0;
+  }
+  traffic.push(agent);
 }
 const parked = [];
 let detailedHumans = 0;
-hydrateResidents([
-  avatar,
-  ...pedestrians.filter((_, i) => i % 9 === 0).map((p) => p.mesh),
-])
+hydrateResidents([avatar])
   .then((n) => (detailedHumans = n))
   .catch((e) => console.warn("Human asset fallback", e));
 let job = null,
@@ -519,12 +633,24 @@ const ENTER_REACH = 4;
 function carChoices() {
   return [
     { mesh: player, kind: "own" },
-    ...traffic.map((sim) => ({ mesh: sim.mesh, kind: "traffic", sim })),
+    ...traffic
+      .filter((sim) => sim.kind !== "motorcycle")
+      .map((sim) => ({ mesh: sim.mesh, kind: "traffic", sim })),
     ...parked,
   ];
 }
 function nearVehicle(x, z, radius, ignore) {
-  return carChoices().some(
+  const reach = (kind) => (kind === "motorcycle" ? Math.min(radius, 2.2) : radius);
+  if (
+    player !== ignore &&
+    Math.hypot(x - player.position.x, z - player.position.z) < radius
+  )
+    return true;
+  for (const sim of traffic) {
+    if (sim.mesh === ignore) continue;
+    if (Math.hypot(x - sim.x, z - sim.z) < reach(sim.kind)) return true;
+  }
+  return parked.some(
     (car) =>
       car.mesh !== ignore &&
       Math.hypot(x - car.mesh.position.x, z - car.mesh.position.z) < radius,
@@ -1029,53 +1155,51 @@ function animate() {
       reset();
       toast("You reached the edge of this city patch.");
     }
-    for (const t of traffic) {
-      const old = t.t,
-        oldRoad = t.road,
-        oldDirection = t.direction;
-      t.t += (dt * 8) / t.road.length;
-      if (t.t > 1) {
-        const endpoint = t.direction === 1 ? t.road.b : t.road.a;
-        const exits = (adjacency.get(nodeKey(endpoint)) || []).filter(
-          (r) => r !== t.road,
+    for (const agent of traffic) {
+      if (!agent.points) continue;
+      const probe = advanceAlong(agent, dt);
+      const gap = agent.kind === "motorcycle" ? 2.5 : 4.2;
+      const blocked =
+        Math.hypot(probe.x - p.x, probe.z - p.z) <
+          (agent.kind === "motorcycle" ? 5.2 : 6.8) ||
+        traffic.some(
+          (other) =>
+            other !== agent &&
+            Math.hypot(probe.x - other.x, probe.z - other.z) < gap,
         );
-        if (exits.length) {
-          t.road = exits[Math.floor(elapsed + t.mesh.id) % exits.length];
-          t.direction = nodeKey(t.road.a) === nodeKey(endpoint) ? 1 : -1;
-        } else t.direction *= -1;
-        t.t = 0;
-      }
-      const r = t.road,
-        dx = (r.b[0] - r.a[0]) / r.length,
-        dz = (r.b[1] - r.a[1]) / r.length,
-        f = t.direction === 1 ? t.t : 1 - t.t;
-      const x = r.a[0] + dx * r.length * f + dz * r.width * 0.22 * t.direction,
-        z = r.a[1] + dz * r.length * f - dx * r.width * 0.22 * t.direction;
-      if (Math.hypot(x - p.x, z - p.z) < 7 || nearVehicle(x, z, 4.5, t.mesh)) {
-        t.t = old;
-        t.road = oldRoad;
-        t.direction = oldDirection;
-        continue;
-      }
-      t.mesh.position.set(x, 0, z);
-      t.mesh.rotation.y = r.angle + (t.direction === 1 ? Math.PI : 0);
+      if (blocked) continue;
+      agent.x = probe.x;
+      agent.z = probe.z;
+      agent.index = probe.index;
+      agent.yaw = probe.yaw;
+      agent.mesh.position.set(agent.x, 0, agent.z);
+      agent.mesh.rotation.y = agent.yaw;
+      if (agent.mesh.userData.wheels)
+        for (const wheel of agent.mesh.userData.wheels)
+          wheel.rotation.x += agent.speed * dt * 3.1;
+      if (probe.arrived) beginTrip(agent, agent.endNode);
     }
     for (const ped of pedestrians) {
       const stunned = (ped.stunUntil || 0) > elapsed;
-      const clock = stunned ? ped.frozenAt || elapsed : elapsed;
-      const wobble = Math.sin(clock * 0.3 + ped.phase);
-      const pace = Math.abs(Math.cos(clock * 0.3 + ped.phase) * 2.4);
       if (!ped.recoil) ped.recoil = new THREE.Vector3();
       if (!stunned) ped.recoil.multiplyScalar(Math.exp(-dt * 2.2));
-      ped.mesh.position.set(
-        ped.start.x + Math.sin(ped.angle) * wobble * 8 + ped.recoil.x,
-        0,
-        ped.start.z + Math.cos(ped.angle) * wobble * 8 + ped.recoil.z,
-      );
-      ped.mesh.rotation.y =
-        ped.angle + (Math.cos(clock * 0.3 + ped.phase) > 0 ? Math.PI : 0);
+      if (!stunned && ped.points) {
+        const probe = advanceAlong(ped, dt);
+        ped.x = probe.x;
+        ped.z = probe.z;
+        ped.index = probe.index;
+        ped.yaw = probe.yaw;
+        if (probe.arrived) beginTrip(ped, ped.endNode);
+      }
+      const seen = Math.hypot(ped.x - p.x, ped.z - p.z);
+      ped.mesh.position.set(ped.x + ped.recoil.x, 0, ped.z + ped.recoil.z);
+      ped.mesh.rotation.y = ped.yaw || 0;
       ped.mesh.rotation.x = stunned ? 0.38 : 0;
-      ped.mesh.userData.walk?.(clock + ped.phase, stunned ? 0 : pace);
+      if (seen < 85 || (frame + ped.phase) % 4 < 1)
+        ped.mesh.userData.walk?.(
+          (stunned ? ped.frozenAt || elapsed : elapsed) + ped.phase,
+          stunned ? 0 : ped.speed,
+        );
     }
     if (job && ["pickup", "delivery"].includes(job.phase)) {
       job = tickDelivery(job, dt);
@@ -1268,6 +1392,9 @@ window.__pune = {
       wallet,
       voiceLocale: $("language").value,
       nearbyBuildingBatches: buildingGroup.children.length,
+      motorcycles: traffic.filter((t) => t.kind === "motorcycle").length,
+      cars: traffic.filter((t) => t.kind === "car").length,
+      pedestrians: pedestrians.length,
     };
   },
 };
