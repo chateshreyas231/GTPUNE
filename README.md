@@ -1,8 +1,8 @@
 # GTPUNE
 
-A small browser game on FC Road in Pune. You are new on the road, with one bag and an old scooter. Kothrud and Karve Nagar are on the board and locked. This chapter is FC Road.
+A third-person chapter on FC Road in Pune. You are new on the road, with one bag. Kothrud and Karve Nagar are listed and locked. The city is simple geometry: the college strip, a chai stall, a bookshop, a signal, and a few blocks.
 
-Walk or ride between the college strip, a chai stall, a bookshop, and a signal. Two deliveries and two street stories make the chapter. Rain pays extra on a delivery. Between jobs you can stop for chai, play a short gully-cricket moment, or pet the street dog. An auto sits by the signal. The Scene meter fills if the road gets loud; settle it with a chappal, a newspaper, or a dabba.
+Two deliveries start at the chai stall. An old scooter and an auto are parked on the road. The libraries are Three.js and Rapier, loaded in the browser with no build step.
 
 ## Run
 
@@ -14,7 +14,7 @@ PORT=3001 npm start
 
 Open http://localhost:3001.
 
-WASD or arrow keys move. E interacts. H honks. `/` opens a word: `pavsa` for rain, `unhala` to clear it, `paise` for cash. A cheat marks the save. Progress stays in the browser.
+Click the street to look with the mouse. WASD moves. Shift sprints. Space jumps. E interacts. F enters or leaves the scooter or the auto. H honks. N toggles night. R toggles rain. Progress stays in the browser.
 
 ## Check
 
@@ -24,9 +24,9 @@ npm test
 
 ## Layout
 
-- `src/missions.js` — the four FC Road missions
-- `src/save.js` — browser save shape
-- `src/cheats.js` — weather and cash words
-- `src/client.js` — the top-down chapter
-- `src/server.js` — the page
+- `src/game.js` — the city, player, vehicles, camera, and weather
+- `src/missions.js` — the two deliveries
+- `src/save.js` — the browser save
+- `public/index.html` — the page
+- `vendor/` — Three.js and Rapier, served as-is
 - `src/index.js` — `npm start`
