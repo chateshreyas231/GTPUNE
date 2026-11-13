@@ -253,7 +253,8 @@ export function parseOSM(data) {
         width: measured.width,
         widthSource: measured.widthSource,
         sidewalk: sidewalkMeters(e.tags.name),
-        name: e.tags.name,
+        name: e.tags.name || "",
+        altName: e.tags.alt_name || "",
         highway: e.tags.highway,
       });
     }
@@ -265,6 +266,10 @@ export function parseOSM(data) {
         floors: measured.floors,
         heightSource: measured.heightSource,
         kind: e.tags.building,
+        id: e.id,
+        name: e.tags.name || "",
+        shop: e.tags.shop || "",
+        amenity: e.tags.amenity || "",
         color: ((e.id || 0) % 100) / 100,
       });
     }
@@ -596,4 +601,15 @@ export {
   makeVehicle,
   makeMotorcycle,
 } from "./vehicles.js";
+export {
+  roadTitle,
+  roadUnder,
+  buildingLook,
+  frontageName,
+  isShopFront,
+  PLASTER,
+  GLASS_PLASTER,
+  SHOP_BANDS,
+  SHOP_BOARDS,
+} from "./place-names.js";
 

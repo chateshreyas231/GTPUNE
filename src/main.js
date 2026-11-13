@@ -38,6 +38,14 @@ import {
   footLookActive,
   footPace,
   beginJump,
+  roadTitle,
+  roadUnder,
+  buildingLook,
+  frontageName,
+  isShopFront,
+  PLASTER,
+  GLASS_PLASTER,
+  SHOP_BANDS,
 } from "./city.js";
 import {
   applyImpact,
@@ -232,6 +240,8 @@ for (const road of city.roads)
       sidewalk: road.sidewalk ?? 1.6,
       length,
       angle,
+      name: road.name || "",
+      altName: road.altName || "",
     });
   }
 const roadGroup = new THREE.Group();
@@ -334,13 +344,24 @@ function facade() {
   return tex;
 }
 const facadeTex = facade();
-const palette = [0xc9bd9f, 0xd6c5ad, 0xb7b8ac, 0xb8c1b0, 0xd1b29a];
-const buildingMats = palette.map(
-  (c) =>
-    new THREE.MeshStandardMaterial({ color: c, map: facadeTex, roughness: 1 }),
+const plasterMats = new Map(
+  [...Object.values(PLASTER), GLASS_PLASTER].map((hex) => [
+    hex,
+    new THREE.MeshStandardMaterial({
+      color: hex,
+      map: facadeTex,
+      roughness: hex === GLASS_PLASTER ? 0.28 : 0.94,
+      metalness: hex === GLASS_PLASTER ? 0.35 : 0.02,
+    }),
+  ]),
+);
+const bandMats = new Map(
+  SHOP_BANDS.map((hex) => [
+    hex,
+    new THREE.MeshStandardMaterial({ color: hex, roughness: 0.78 }),
+  ]),
 );
 const roofMat = material(0x9b9b8b);
-const bandMat = material(0xc8bfa8);
 const obstacles = city.buildings.map((b) => {
   const xs = b.points.map((p) => p[0]),
     zs = b.points.map((p) => p[1]);
@@ -354,8 +375,102 @@ const obstacles = city.buildings.map((b) => {
 });
 const buildingGroup = new THREE.Group();
 scene.add(buildingGroup);
+const signGroup = new THREE.Group();
+scene.add(signGroup);
+const signTextures = new Map();
+const BAND_CSS = {
+  0x7c2f3b: "#7c2f3b",
+  0x1f6b4a: "#1f6b4a",
+  0x1d4f88: "#1d4f88",
+  0xc4892b: "#c4892b",
+};
 let buildingCenter = new THREE.Vector2(Infinity, Infinity);
 let detailGroup;
+function boardTexture(text, css) {
+  const key = css + ":" + text;
+  if (signTextures.has(key)) return signTextures.get(key);
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 128;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = css;
+  ctx.fillRect(0, 0, 512, 128);
+  ctx.fillStyle = "#f8f1df";
+  ctx.font = "bold 44px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text.length > 22 ? text.slice(0, 21) + "…" : text, 256, 66);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  signTextures.set(key, tex);
+  return tex;
+}
+function shopSpot(b) {
+  const x = (b.minX + b.maxX) / 2,
+    z = (b.minZ + b.maxZ) / 2;
+  let best = null,
+    bestD = 36;
+  for (const r of roadSegments) {
+    if (Math.abs(r.a[0] - x) > 90 && Math.abs(r.b[0] - x) > 90) continue;
+    if (Math.abs(r.a[1] - z) > 90 && Math.abs(r.b[1] - z) > 90) continue;
+    const dist = segmentDistance(x, z, r.a, r.b);
+    if (dist < bestD) {
+      bestD = dist;
+      best = r;
+    }
+  }
+  if (!best) return null;
+  const dx = best.b[0] - best.a[0],
+    dz = best.b[1] - best.a[1],
+    len2 = dx * dx + dz * dz || 1;
+  const t = Math.max(0, Math.min(1, ((x - best.a[0]) * dx + (z - best.a[1]) * dz) / len2));
+  const qx = best.a[0] + dx * t,
+    qz = best.a[1] + dz * t;
+  const toRoadX = qx - x,
+    toRoadZ = qz - z,
+    vlen = Math.hypot(toRoadX, toRoadZ) || 1;
+  let sx = x,
+    sz = z,
+    walked = 0;
+  while (walked < 80 && sx >= b.minX && sx <= b.maxX && sz >= b.minZ && sz <= b.maxZ) {
+    walked += 0.5;
+    sx = x + (toRoadX / vlen) * walked;
+    sz = z + (toRoadZ / vlen) * walked;
+  }
+  sx += (toRoadX / vlen) * 1.2;
+  sz += (toRoadZ / vlen) * 1.2;
+  return { x: sx, z: sz, angle: Math.atan2(toRoadX, toRoadZ) + Math.PI / 2 };
+}
+function refreshSigns(cx, cz) {
+  for (const mesh of [...signGroup.children]) {
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+    signGroup.remove(mesh);
+  }
+  const near = [];
+  for (const b of obstacles) {
+    if (!isShopFront(b)) continue;
+    const dist = Math.hypot((b.minX + b.maxX) / 2 - cx, (b.minZ + b.maxZ) / 2 - cz);
+    if (dist > 140) continue;
+    near.push({ b, dist, label: frontageName(b) });
+  }
+  near.sort((a, c) => a.dist - c.dist);
+  for (const item of near.slice(0, 16)) {
+    const spot = shopSpot(item.b);
+    if (!spot) continue;
+    const look = buildingLook(item.b);
+    const tex = boardTexture(item.label, BAND_CSS[look.band] || "#7c2f3b");
+    const width = Math.min(16, 4 + item.label.length * 0.42);
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, width / 4),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, side: THREE.DoubleSide }),
+    );
+    mesh.position.set(spot.x, 3.1, spot.z);
+    mesh.rotation.y = spot.angle;
+    mesh.name = item.label;
+    signGroup.add(mesh);
+  }
+}
 function renderBuildings(cx, cz) {
   for (const mesh of [...buildingGroup.children]) {
     mesh.geometry.dispose();
@@ -364,6 +479,7 @@ function renderBuildings(cx, cz) {
   buildingCenter.set(cx, cz);
   renderRoads(cx, cz);
   let banded = 0;
+  let shopBands = 0;
   for (const b of obstacles) {
     if (
       Math.hypot((b.minX + b.maxX) / 2 - cx, (b.minZ + b.maxZ) / 2 - cz) > 900
@@ -382,10 +498,9 @@ function renderBuildings(cx, cz) {
     const uv = geo.attributes.uv;
     for (let i = 0; i < uv.count; i++)
       uv.setXY(i, uv.getX(i) / 10, uv.getY(i) / 12);
-    const m = new THREE.Mesh(geo, [
-      roofMat,
-      buildingMats[Math.floor(b.color * 5) % 5],
-    ]);
+    const look = buildingLook(b);
+    const wall = plasterMats.get(look.plaster) || plasterMats.get(GLASS_PLASTER);
+    const m = new THREE.Mesh(geo, [roofMat, wall]);
     m.castShadow = true;
     m.receiveShadow = true;
     buildingGroup.add(m);
@@ -395,6 +510,23 @@ function renderBuildings(cx, cz) {
     );
     const floors =
       b.floors || Math.max(1, Math.round(b.height / STOREY_METERS));
+    if (isShopFront(b) && dist < 160 && shopBands < 40 && b.height > 3.2) {
+      shopBands++;
+      const bandShape = new THREE.Shape();
+      bandShape.moveTo(b.points[0][0], -b.points[0][1]);
+      for (const p of b.points.slice(1)) bandShape.lineTo(p[0], -p[1]);
+      bandShape.closePath();
+      const bandH = Math.min(3.1, Math.max(2.2, b.height * 0.3));
+      const bandGeo = new THREE.ExtrudeGeometry(bandShape, {
+        depth: bandH,
+        bevelEnabled: false,
+      });
+      bandGeo.rotateX(-Math.PI / 2);
+      const shopBand = new THREE.Mesh(bandGeo, bandMats.get(look.band));
+      shopBand.castShadow = true;
+      shopBand.receiveShadow = true;
+      buildingGroup.add(shopBand);
+    }
     if (dist < 130 && banded < 48 && floors > 1) {
       banded++;
       const pts = b.points;
@@ -410,7 +542,9 @@ function renderBuildings(cx, cz) {
           if (len < 1.8) continue;
           const band = new THREE.Mesh(
             new THREE.BoxGeometry(0.34, 0.16, len),
-            bandMat,
+            isShopFront(b) && f === 1
+              ? bandMats.get(buildingLook(b).band)
+              : wall,
           );
           band.position.set((p0[0] + p1[0]) / 2, y, (p0[1] + p1[1]) / 2);
           band.rotation.y = Math.atan2(dx, dz);
@@ -422,6 +556,7 @@ function renderBuildings(cx, cz) {
     }
   }
   mergeStatic(buildingGroup);
+  refreshSigns(cx, cz);
   if (detailGroup) {
     scene.remove(detailGroup);
     const disposed = new Set();
@@ -1616,6 +1751,7 @@ function drawMap() {
   if (mapLayers.roads) {
     map.strokeStyle = "#6d8f7c";
     map.lineCap = "round";
+    const drawnRoads = new Set();
     const viewMinX = center.x - reach;
     const viewMaxX = center.x + reach;
     const viewMinZ = center.z - reach;
@@ -1639,6 +1775,17 @@ function drawMap() {
         i ? map.lineTo(sx(p[0]), sy(p[1])) : map.moveTo(sx(p[0]), sy(p[1])),
       );
       map.stroke();
+      if (mapView.size !== "max") continue;
+      const title = roadTitle(r);
+      if (!title) continue;
+      const mid = r.points[Math.floor(r.points.length / 2)];
+      if (!mid || !visible(mid[0], mid[1])) continue;
+      if (drawnRoads.has(title)) continue;
+      drawnRoads.add(title);
+      if (drawnRoads.size > 10) continue;
+      map.fillStyle = "#f6f3e6";
+      map.font = `${Math.max(11, w / 52)}px sans-serif`;
+      map.fillText(title, sx(mid[0]) + 4, sy(mid[1]) - 4);
     }
   }
   if (mapLayers.traffic) {
@@ -2115,7 +2262,13 @@ function animate() {
         ? a
         : b,
     );
-    $("district").textContent = nearest.name;
+    const roadName = roadUnder(p.x, p.z, roadSegments);
+    const nearPlace = (city.places || []).find(
+      (place) =>
+        place.name &&
+        Math.hypot(p.x - place.point[0], p.z - place.point[1]) < 45,
+    );
+    $("district").textContent = nearPlace?.name || roadName || nearest.name;
     if (city.source === "OpenStreetMap")
       document.querySelector(".location small").textContent =
         `${(origin.lat - p.z / 111320).toFixed(4)}° N · ${(origin.lon + p.x / 105500).toFixed(4)}° E`;
