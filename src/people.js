@@ -71,7 +71,7 @@ export function stepGait(state, dt = 0, speed = 0) {
 
 export function person(index, options = {}) {
   const player = options.player === true;
-  const role = player ? null : { ...residentProfile(index) };
+  const role = player ? null : { ...(options.role || residentProfile(index)) };
   const g = new THREE.Group(),
     skin = player ? 0xd6b08a : role.skin,
     shirt = player ? 0xe4dccc : role.top,
@@ -82,6 +82,7 @@ export function person(index, options = {}) {
   g.userData.shirt = shirt;
   g.userData.name = player ? "You" : role.name;
   if (role) g.userData.role = role;
+  if (role?.service) g.userData.service = role.service;
   const mat = (c) =>
     new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
   const add = (geo, c, x, y, z, parent = g) => {
@@ -126,6 +127,22 @@ export function person(index, options = {}) {
     add(new THREE.BoxGeometry(0.28, 0.32, 0.1), 0x2c3a44, 0, 1.15, 0.16);
   if (role?.kind === "shop")
     add(new THREE.BoxGeometry(0.34, 0.42, 0.04), 0xe7e1d2, 0, 1.05, -0.16);
+  if (role?.service === "police") {
+    const cap = add(new THREE.CylinderGeometry(0.17, 0.18, 0.07, 10), 0x3a3328, 0, 1.9, 0);
+    cap.name = "cap";
+    const brim = add(new THREE.BoxGeometry(0.22, 0.02, 0.14), 0x2c261c, 0, 1.86, -0.1);
+    brim.name = "cap-brim";
+    add(new THREE.BoxGeometry(0.46, 0.05, 0.3), 0x2a241c, 0, 0.84, 0);
+    const lathi = add(new THREE.CylinderGeometry(0.018, 0.018, 0.55, 6), 0x5a4632, 0.24, 0.62, 0.06);
+    lathi.rotation.z = 0.35;
+    lathi.name = "lathi";
+  }
+  if (role?.service === "junkie") {
+    torso.rotation.x = 0.28;
+    torso.name = "slouch";
+    g.userData.slouch = true;
+    add(new THREE.SphereGeometry(0.07, 8, 6), hair, 0.1, 1.86, 0.02);
+  }
   for (const x of [-0.065, 0.065]) {
     add(new THREE.SphereGeometry(0.025, 8, 6), 0xe6dac8, x, 1.68, -0.16);
     add(new THREE.SphereGeometry(0.012, 6, 6), 0x242424, x, 1.68, -0.181);

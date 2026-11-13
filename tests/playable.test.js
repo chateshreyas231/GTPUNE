@@ -49,6 +49,9 @@ const ALLOWED = new Set([
   "Scooter",
   "Moped",
   "Geared Bike",
+  "Police Sedan",
+  "Ambulance",
+  "Fire Engine",
 ]);
 
 function crossRoads() {

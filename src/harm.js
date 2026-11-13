@@ -3,7 +3,11 @@
 export function bodyRadius(kind) {
   if (kind === "motorcycle") return 0.8;
   if (kind === "armor") return 2.15;
-  if (kind === "car" || kind === "player-car") return kind === "player-car" ? 1.35 : 1.25;
+  if (kind === "player-car") return 1.35;
+  if (kind === "car") return 1.25;
+  if (kind === "police") return 1.4;
+  if (kind === "ambulance") return 1.65;
+  if (kind === "fire") return 1.9;
   return 0.45;
 }
 
@@ -28,8 +32,7 @@ export function crashFromImpact(speed) {
 
 export function applyImpact(person, impact, dirX = 0, dirZ = 0, options = {}) {
   const current = person || {};
-  if (!impact?.knocked || current.dead)
-    return { ...current, changed: false };
+  if (!impact?.knocked || current.dead) return { ...current, changed: false };
   let health = Math.max(0, (current.health ?? 3) - (impact.dead ? 3 : 1));
   let dead = Boolean(impact.dead) || health <= 0;
   // A vehicle can knock the player down. It cannot kill them.

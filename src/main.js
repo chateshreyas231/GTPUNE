@@ -35,9 +35,23 @@ import {
   makeVehicle,
   makeArmoredCarrier,
   VEHICLE_TONES,
+  SIREN_TONES,
   distanceGain,
   nearestCar,
   BODY_LABELS,
+  CITY_SERVICES,
+  ROUND_SPEED,
+  officerProfile,
+  junkieProfile,
+  serviceFleet,
+  serviceSpeed,
+  serviceLateral,
+  sirenFrequency,
+  beaconLit,
+  applyWander,
+  passage,
+  serviceMapColor,
+  personMapColor,
   orbitLook,
   footLookActive,
   footPace,
@@ -798,6 +812,36 @@ for (let i = 0; i < 48; i++) {
   beginTrip(agent);
   pedestrians.push(agent);
 }
+function clearSpawn(agent, gap, pace) {
+  if (Math.hypot((agent.x || 0) - city.spawn[0], (agent.z || 0) - city.spawn[1]) >= gap)
+    return;
+  const skip = advanceAlong(agent, gap / Math.max(pace, 0.4));
+  agent.x = skip.x;
+  agent.z = skip.z;
+  agent.index = skip.index;
+  agent.yaw = skip.yaw;
+  agent.mesh.position.set(agent.x, 0, agent.z);
+  agent.mesh.rotation.y = agent.yaw || 0;
+}
+function nudgeAlong(agent, metres) {
+  const skip = advanceAlong(agent, metres / Math.max(agent.speed, 0.4));
+  agent.x = skip.x;
+  agent.z = skip.z;
+  agent.index = skip.index;
+  agent.yaw = skip.yaw;
+  agent.mesh.position.set(agent.x, 0, agent.z);
+  agent.mesh.rotation.y = agent.yaw || 0;
+}
+function separateFrom(agent, others, gap) {
+  for (let n = 0; n < 8; n++) {
+    const crowded = others.some(
+      (other) =>
+        other !== agent && Math.hypot(agent.x - other.x, agent.z - other.z) < gap,
+    );
+    if (!crowded) return;
+    nudgeAlong(agent, gap);
+  }
+}
 const traffic = [];
 const bikeColors = [0xb4332a, 0x1e1e1e, 0x1d4e89, 0xc5c8cc, 0x2f6b45, 0x8a3b2f];
 const carColors = [0xa7b7b3, 0xe3dac4, 0x678e92, 0xa4523f, 0xd7c4a2, 0x6e8b74];
@@ -847,6 +891,103 @@ for (let i = 0; i < fleetCount; i++) {
   }
   traffic.push(agent);
 }
+const nearRoads = populationRoads.filter(
+  (road) => segmentDistance(...city.spawn, road.a, road.b) < 220,
+);
+const serviceRoads = nearRoads.length > 4 ? nearRoads : populationRoads;
+for (let i = 0; i < CITY_SERVICES.officers; i++) {
+  const role = officerProfile(i);
+  const mesh = person(200 + i, { role });
+  const side = i % 2 ? 1 : -1;
+  const segment = serviceRoads[(i * 2) % serviceRoads.length];
+  const agent = {
+    mesh,
+    kind: "person",
+    service: "police",
+    segment,
+    t: 0.18 + (i % 5) * 0.14,
+    direction: 1,
+    side,
+    lateral: (step) => sidewalkLateral(step.segment, side),
+    speed: ROUND_SPEED,
+    minLength: 100,
+    health: 3,
+    down: false,
+    dead: false,
+    rng: mulberry32(12000 + i * 13),
+    phase: i * 0.4,
+    yaw: 0,
+  };
+  scene.add(mesh);
+  beginTrip(agent);
+  clearSpawn(agent, 10, agent.speed);
+  separateFrom(agent, pedestrians, 1.6);
+  pedestrians.push(agent);
+}
+for (let i = 0; i < CITY_SERVICES.junkies; i++) {
+  const role = junkieProfile(i);
+  const mesh = person(260 + i, { role });
+  const side = i % 2 ? -1 : 1;
+  const segment = serviceRoads[(i * 3 + 1) % serviceRoads.length];
+  const agent = {
+    mesh,
+    kind: "person",
+    service: "junkie",
+    segment,
+    t: 0.22 + i * 0.2,
+    direction: i % 2 ? -1 : 1,
+    side,
+    lateral: (step) => sidewalkLateral(step.segment, side),
+    speed: 0.55,
+    minLength: 24,
+    health: 3,
+    down: false,
+    dead: false,
+    rng: mulberry32(13000 + i * 19),
+    phase: i * 1.1,
+    wait: 0.3 + i * 0.5,
+    yaw: 0,
+  };
+  scene.add(mesh);
+  beginTrip(agent);
+  clearSpawn(agent, 12, 0.55);
+  separateFrom(agent, pedestrians, 1.6);
+  pedestrians.push(agent);
+}
+serviceFleet().forEach((body, i) => {
+  const mesh = makeVehicle(body);
+  const kind = mesh.userData.kind;
+  const segment = serviceRoads[(i * 2 + 1) % serviceRoads.length];
+  if (!segment || segment.length < 8) return;
+  const direction = i % 2 ? 1 : -1;
+  const agent = {
+    mesh,
+    kind,
+    body,
+    service: kind,
+    siren: mesh.userData.siren,
+    label: mesh.userData.label,
+    segment,
+    t: 0.15 + (i % 4) * 0.18,
+    direction,
+    lateral: (step) => serviceLateral(step.segment, step.direction),
+    speed: serviceSpeed(kind, i),
+    minLength: 80,
+    rng: mulberry32(15000 + i * 19),
+    phase: i * 0.37,
+    yaw: 0,
+    hornIn: 999,
+  };
+  scene.add(mesh);
+  beginTrip(agent);
+  clearSpawn(agent, 16, agent.speed);
+  separateFrom(
+    agent,
+    traffic,
+    bodyRadius(kind) + bodyRadius("car") + 1.5,
+  );
+  traffic.push(agent);
+});
 function makeStreetWeapon(id) {
   const group = new THREE.Group();
   const mat = (color) =>
@@ -1145,6 +1286,44 @@ function playHorn(body, amount = 0.07) {
   gain.gain.exponentialRampToValueAtTime(0.001, now + tone.hornSeconds);
   osc.start(now);
   osc.stop(now + tone.hornSeconds + 0.02);
+}
+const sirenNodes = new Map();
+function ensureSirens() {
+  if (!audioContext) return;
+  for (const [kind, tone] of Object.entries(SIREN_TONES)) {
+    if (sirenNodes.has(kind)) continue;
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    osc.type = tone.type;
+    osc.frequency.value = tone.low;
+    gain.gain.value = 0;
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    osc.start();
+    sirenNodes.set(kind, { osc, gain, tone });
+  }
+}
+function updateSirens(listener) {
+  if (!sound || !audioContext) {
+    for (const node of sirenNodes.values()) node.gain.gain.value = 0;
+    return;
+  }
+  ensureSirens();
+  const best = new Map();
+  for (const agent of traffic) {
+    if (!agent.siren) continue;
+    const d = Math.hypot(agent.x - listener.x, agent.z - listener.z);
+    const gain = distanceGain(d, 78);
+    const prev = best.get(agent.kind);
+    if (!prev || gain > prev) best.set(agent.kind, gain);
+  }
+  const now = audioContext.currentTime;
+  const sweep = performance.now() / 1000;
+  for (const [kind, node] of sirenNodes) {
+    const gain = best.get(kind) || 0;
+    node.osc.frequency.setTargetAtTime(sirenFrequency(node.tone, sweep), now, 0.05);
+    node.gain.gain.setTargetAtTime(Math.min(0.045, gain * 0.06), now, 0.08);
+  }
 }
 function updateEngines(listener) {
   if (!sound || !audioContext) {
@@ -2059,7 +2238,6 @@ function drawMap() {
     }
   }
   if (mapLayers.traffic) {
-    map.fillStyle = "#f4f7f2";
     for (const t of traffic) {
       const x = t.mesh.position.x;
       const z = t.mesh.position.z;
@@ -2067,6 +2245,7 @@ function drawMap() {
       map.save();
       map.translate(sx(x), sy(z));
       map.rotate(-t.mesh.rotation.y);
+      map.fillStyle = serviceMapColor(t.kind);
       map.fillRect(-3.5, -2, 7, 4);
       map.restore();
     }
@@ -2090,11 +2269,11 @@ function drawMap() {
     map.restore();
   }
   if (mapLayers.people) {
-    map.fillStyle = "#7dcea0";
     for (const person of pedestrians) {
       const x = person.mesh.position.x;
       const z = person.mesh.position.z;
       if (!visible(x, z)) continue;
+      map.fillStyle = personMapColor(person.service);
       map.beginPath();
       map.arc(sx(x), sy(z), 2.4, 0, Math.PI * 2);
       map.fill();
@@ -2301,24 +2480,24 @@ function animate() {
       if (!agent.points) continue;
       const probe = advanceAlong(agent, dt);
       const radius = bodyRadius(agent.kind);
-      let victim = null;
-      for (const ped of pedestrians) {
-        if (Math.hypot(probe.x - ped.x, probe.z - ped.z) < radius + 0.45) {
-          victim = ped;
-          break;
-        }
-      }
+      const gate = passage({
+        x: probe.x,
+        z: probe.z,
+        kind: agent.kind,
+        people: pedestrians,
+        bodies: [
+          ...vehicleSolids(agent.mesh),
+          walking
+            ? { x: avatar.position.x, z: avatar.position.z, radius: 0.45 }
+            : { x: player.position.x, z: player.position.z, radius: bodyRadius("player-car") },
+        ],
+      });
+      const victim = gate.hit;
       const playerHit =
         walking &&
         !playerLife.down &&
         Math.hypot(probe.x - avatar.position.x, probe.z - avatar.position.z) <
           radius + 0.45;
-      const blocked = blocksMove(probe.x, probe.z, radius, [
-        ...vehicleSolids(agent.mesh),
-        ...(walking
-          ? [{ x: avatar.position.x, z: avatar.position.z, radius: 0.45 }]
-          : []),
-      ]);
       if (victim && !victim.down) {
         const dx = probe.x - agent.x,
           dz = probe.z - agent.z,
@@ -2348,7 +2527,7 @@ function animate() {
         const impact = crashFromImpact(agent.speed);
         hitPlayer(impact, dx / len, dz / len);
         agent.speed *= impact.retain;
-      } else if (!blocked && !victim) {
+      } else if (gate.clear) {
         agent.x = probe.x;
         agent.z = probe.z;
         agent.index = probe.index;
@@ -2362,7 +2541,7 @@ function animate() {
         if (probe.arrived) beginTrip(agent, agent.endNode);
       }
       agent.hornIn = (agent.hornIn || 0) - dt;
-      if (sound) {
+      if (sound && !agent.siren) {
         const near = Math.hypot(agent.x - p.x, agent.z - p.z);
         if (agent.hornIn <= 0 && near < 26) {
           playHorn(agent.body, distanceGain(near) * 0.07);
@@ -2387,6 +2566,7 @@ function animate() {
         ped.mesh.userData.walk?.(0, 0);
         continue;
       }
+      if (ped.service === "junkie") applyWander(ped, dt);
       if (ped.points) {
         const probe = advanceAlong(ped, dt);
         const bodies = vehicleSolids(null);
@@ -2478,6 +2658,14 @@ function animate() {
     }
   }
   updateEngines(actor().position);
+  updateSirens(actor().position);
+  const sirenTime = performance.now() / 1000;
+  for (const agent of traffic) {
+    const lamps = agent.mesh.userData.beacons;
+    if (!lamps?.length) continue;
+    const lit = beaconLit(agent.siren?.rate || 1, sirenTime + (agent.phase || 0));
+    for (const lamp of lamps) lamp.material.emissiveIntensity = lit ? 1.6 : 0.05;
+  }
   tickSmoke(dt);
   const p = actor().position;
   if (Math.hypot(p.x - buildingCenter.x, p.z - buildingCenter.y) > 300)
@@ -2614,6 +2802,11 @@ window.__pune = {
       running: walking && keys.has("shift"),
       motorcycles: traffic.filter((t) => t.kind === "motorcycle").length,
       cars: traffic.filter((t) => t.kind === "car").length,
+      officers: pedestrians.filter((ped) => ped.service === "police").length,
+      junkies: pedestrians.filter((ped) => ped.service === "junkie").length,
+      policeCars: traffic.filter((t) => t.kind === "police").length,
+      ambulances: traffic.filter((t) => t.kind === "ambulance").length,
+      fireEngines: traffic.filter((t) => t.kind === "fire").length,
       places: (city.places || []).map((place) => ({
         name: place.name,
         kind: place.kind,
