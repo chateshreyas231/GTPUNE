@@ -54,6 +54,12 @@ export function streetDetails(cx, cz, roads, blocked, buildings = []) {
     shop: new THREE.MeshStandardMaterial({ color: 0x6d4038, roughness: 0.85 }),
     shop2: new THREE.MeshStandardMaterial({ color: 0x243c44, roughness: 0.8 }),
     sign: new THREE.MeshStandardMaterial({ color: 0xf3e6c4, roughness: 0.7 }),
+    lamp: new THREE.MeshStandardMaterial({
+      color: 0xfff3cc,
+      emissive: 0xffc56a,
+      emissiveIntensity: 2.8,
+      roughness: 0.3,
+    }),
   };
   const trunkGeo = new THREE.CylinderGeometry(0.16, 0.28, 4.2, 7);
   const clumpGeo = new THREE.SphereGeometry(1, 7, 5);
@@ -131,6 +137,19 @@ export function streetDetails(cx, cz, roads, blocked, buildings = []) {
         root.userData.trees.push(tree);
         trees++;
         onRoad++;
+        if (trees % 2 === 0 && trees <= 24) {
+          const pole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.08, 5.2, 6),
+            mats.metal,
+          );
+          pole.position.set(x + dz * side * 1.1, 2.6, z - dx * side * 1.1);
+          pole.castShadow = true;
+          root.add(pole);
+          const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), mats.lamp);
+          head.name = "street-lamp";
+          head.position.set(pole.position.x, 5.15, pole.position.z);
+          root.add(head);
+        }
       }
     }
   }

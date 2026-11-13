@@ -4,6 +4,11 @@ import { loadSurfacePhotos, hydrateResidents } from "./visual-assets.js";
 import { lines } from "./dialogue.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import "./style.css";
 import {
   fallbackCity,
@@ -69,8 +74,8 @@ try {
 }
 const surfacePhotos = await loadSurfacePhotos();
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xc6c8ac);
-scene.fog = new THREE.FogExp2(0xc6c8ac, 0.0013);
+scene.background = new THREE.Color(0xd4d2bc);
+scene.fog = new THREE.FogExp2(0xd4d2bc, 0.00105);
 const renderer = new THREE.WebGLRenderer({
   canvas: $("world"),
   antialias: true,
@@ -87,16 +92,86 @@ renderer.shadowMap.enabled = !softwareGPU;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+renderer.toneMappingExposure = 0.96;
 const camera = new THREE.PerspectiveCamera(
-  57,
+  64,
   innerWidth / innerHeight,
   0.2,
   6000,
 );
-const hemi = new THREE.HemisphereLight(0xe7ecde, 0x676956, 2.3);
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(3200, 20, 12),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      top: { value: new THREE.Color(0xf6f3e6) },
+      horizon: { value: new THREE.Color(0xcfcbb6) },
+    },
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vDir;
+      uniform vec3 top;
+      uniform vec3 horizon;
+      void main() {
+        float h = clamp(vDir.y * 0.85 + 0.12, 0.0, 1.0);
+        vec3 color = mix(horizon, top, smoothstep(0.0, 0.7, h));
+        color += vec3(0.22, 0.16, 0.06) * smoothstep(0.45, 1.0, h);
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `,
+  }),
+);
+sky.frustumCulled = false;
+scene.add(sky);
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  0.28,
+  0.42,
+  0.84,
+);
+composer.addPass(bloomPass);
+composer.addPass(
+  new ShaderPass({
+    uniforms: { tDiffuse: { value: null } },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      varying vec2 vUv;
+      void main() {
+        vec4 color = texture2D(tDiffuse, vUv);
+        float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+        color.rgb = mix(vec3(luma), color.rgb, 0.86);
+        color.rgb = (color.rgb - 0.5) * 0.86 + 0.5;
+        color.rgb += 0.035;
+        color.r *= 1.045;
+        color.b *= 0.94;
+        vec2 q = vUv - 0.5;
+        float vignette = smoothstep(0.92, 0.32, length(q));
+        color.rgb *= mix(0.82, 1.0, vignette);
+        gl_FragColor = color;
+      }
+    `,
+  }),
+);
+composer.addPass(new OutputPass());
+const hemi = new THREE.HemisphereLight(0xe7ecde, 0x676956, 1.85);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xffd59b, 3.5);
+const sun = new THREE.DirectionalLight(0xffd59b, 2.5);
 sun.position.set(-170, 240, 80);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
@@ -1293,7 +1368,8 @@ $("photo").onclick = () => {
     renderer.setSize(3840, 2160, false);
     camera.aspect = 3840 / 2160;
     camera.updateProjectionMatrix();
-    renderer.render(scene, camera);
+    composer.setSize(3840, 2160);
+    composer.render();
     const link = document.createElement("a");
     link.download = "pune-4k.png";
     link.href = renderer.domElement.toDataURL("image/png");
@@ -1302,6 +1378,7 @@ $("photo").onclick = () => {
   } finally {
     renderer.setPixelRatio(oldPixelRatio);
     renderer.setSize(size.x, size.y, false);
+    composer.setSize(size.x, size.y);
     camera.aspect = aspect;
     camera.updateProjectionMatrix();
   }
@@ -1315,10 +1392,12 @@ $("close-help").onclick = $("resume").onclick = () => $("instructions").close();
 $("lighting").onclick = () => {
   night = !night;
   $("lighting").textContent = night ? "BLUE HOUR" : "GOLDEN HOUR";
-  scene.background.set(night ? 0x526675 : 0xc6c8ac);
+  scene.background.set(night ? 0x526675 : 0xd4d2bc);
   scene.fog.color.copy(scene.background);
-  sun.intensity = night ? 0.4 : 3.5;
-  hemi.intensity = night ? 1 : 2.3;
+  sky.material.uniforms.horizon.value.set(night ? 0x3c525c : 0xcfcbb6);
+  sky.material.uniforms.top.value.set(night ? 0x6d8796 : 0xf6f3e6);
+  sun.intensity = night ? 0.35 : 2.5;
+  hemi.intensity = night ? 0.85 : 1.85;
 };
 for (const b of document.querySelectorAll("[data-key]")) {
   b.onpointerdown = (e) => {
@@ -1981,7 +2060,7 @@ function animate() {
   if (Math.hypot(p.x - buildingCenter.x, p.z - buildingCenter.y) > 300)
     renderBuildings(p.x, p.z);
   if (active && walking) {
-    const back = view === 1 ? 2.6 : view === 2 ? 16 : walking ? 4.4 : 8;
+    const back = view === 1 ? 3.6 : view === 2 ? 20 : 6.4;
     const orbit = view === 2 ? 0.9 : lookPitch;
     const cosP = Math.cos(orbit);
     desiredCamera.set(
@@ -1995,8 +2074,8 @@ function animate() {
       p.z - Math.cos(lookYaw) * 2.2,
     );
   } else if (active) {
-    const back = view === 1 ? 5 : view === 2 ? 18 : 13,
-      height = view === 1 ? 3 : view === 2 ? 42 : 7;
+    const back = view === 1 ? 7 : view === 2 ? 22 : 17,
+      height = view === 1 ? 3.6 : view === 2 ? 46 : 8.4;
     desiredCamera.set(
       p.x + Math.sin(yaw) * back,
       p.y + height,
@@ -2042,7 +2121,7 @@ function animate() {
         `${(origin.lat - p.z / 111320).toFixed(4)}° N · ${(origin.lon + p.x / 105500).toFixed(4)}° E`;
   }
   swayCanopies(detailGroup, performance.now() * 0.001);
-  renderer.render(scene, camera);
+  composer.render();
 }
 camera.position.set(150, 65, 230);
 animate();
@@ -2050,6 +2129,7 @@ window.addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
 });
 // Read-only diagnostics for smoke tests and performance inspection.
 window.__pune = {
