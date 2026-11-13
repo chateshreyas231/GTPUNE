@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
-import { dirname, join, normalize } from "node:path";
+import { dirname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serviceArea } from "./areas.js";
 
@@ -15,13 +15,18 @@ const files = new Map([
   ["/street.js", "src/street.js"],
   ["/vendor/three/three.module.js", "vendor/three/three.module.js"],
   ["/vendor/rapier/rapier.es.js", "vendor/rapier/rapier.es.js"],
-  ["/vendor/rapier/rapier_wasm3d_bg.wasm", "vendor/rapier/rapier_wasm3d_bg.wasm"],
+  [
+    "/vendor/rapier/rapier_wasm3d_bg.wasm",
+    "vendor/rapier/rapier_wasm3d_bg.wasm",
+  ],
 ]);
 
 const types = new Map([
   [".html", "text/html; charset=utf-8"],
   [".js", "text/javascript; charset=utf-8"],
   [".wasm", "application/wasm"],
+  [".css", "text/css; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
 ]);
 
 function contentType(filePath) {
@@ -42,14 +47,63 @@ function readPublic(pathname) {
   return { filePath, body: readFileSync(filePath) };
 }
 
-export function createApp() {
+function readPrototype(pathname) {
+  const dist = resolve(root, "dist");
+  const filePath = resolve(
+    dist,
+    pathname === "/" ? "index.html" : `.${pathname}`,
+  );
+  if (!filePath.startsWith(dist + sep) || !existsSync(filePath)) return null;
+  try {
+    return { filePath, body: readFileSync(filePath) };
+  } catch {
+    return null;
+  }
+}
+
+export function createApp({ prototype = false } = {}) {
   return createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const { pathname } = url;
 
-    if (pathname === "/") {
+    if (
+      prototype &&
+      (pathname === "/" ||
+        pathname === "/index.html" ||
+        pathname.startsWith("/assets/") ||
+        pathname.startsWith("/data/"))
+    ) {
       if (req.method !== "GET") {
-        res.writeHead(405, { allow: "GET", "content-type": "text/plain; charset=utf-8" });
+        res.writeHead(405, { allow: "GET" });
+        res.end("Method not allowed");
+        return;
+      }
+      const file = readPrototype(pathname);
+      if (!file) {
+        send(
+          res,
+          pathname === "/" ? 503 : 404,
+          pathname === "/"
+            ? "Build the prototype with npm run build before starting."
+            : "Not found",
+          "text/plain; charset=utf-8",
+        );
+        return;
+      }
+      send(res, 200, file.body, contentType(file.filePath));
+      return;
+    }
+
+    if (
+      pathname === "/" ||
+      pathname === "/classic" ||
+      pathname === "/classic/"
+    ) {
+      if (req.method !== "GET") {
+        res.writeHead(405, {
+          allow: "GET",
+          "content-type": "text/plain; charset=utf-8",
+        });
         res.end("Method not allowed");
         return;
       }
@@ -60,11 +114,19 @@ export function createApp() {
 
     if (pathname === "/areas") {
       if (req.method !== "GET") {
-        res.writeHead(405, { allow: "GET", "content-type": "text/plain; charset=utf-8" });
+        res.writeHead(405, {
+          allow: "GET",
+          "content-type": "text/plain; charset=utf-8",
+        });
         res.end("Method not allowed");
         return;
       }
-      send(res, 200, JSON.stringify(serviceArea), "application/json; charset=utf-8");
+      send(
+        res,
+        200,
+        JSON.stringify(serviceArea),
+        "application/json; charset=utf-8",
+      );
       return;
     }
 
