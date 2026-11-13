@@ -22,10 +22,12 @@ PORT=3001 npm start
 - C: cycle chase, close and overhead cameras.
 - H: horn; enable sound with the SOUND button first.
 - T: talk to a pedestrian within 22 m. Select Marathi, Hindi or English.
+- J / START DABBA DELIVERY: begin a timed ₹450 delivery. Stop at the marker, get out and press F to collect; repeat at FC Road to deliver. Completion saves the wallet locally.
+- 4K PHOTO: export a 3840 × 2160 scene PNG; normal rendering remains sized for your screen.
 - P: pause. The game also pauses on a hidden tab.
 - Follow the three amber markers to complete the evening run. Return to Deccan resets your vehicle position.
 
-Traffic follows road segments and yields near the player. Buildings, pedestrians and cars block movement. NPCs are generated fictional people; dialogue is authored text. Speech uses a matching installed browser voice and falls back to subtitles. Engine and horn sounds are synthesized; there are no recorded native actors yet.
+Traffic follows road segments and yields near the player. Buildings, pedestrians and cars block movement. NPCs are fictional people, with a skinned reference character, procedural residents and simpler family figures; dialogue is authored text. Speech uses nine bundled Marathi, Hindi and Indian English neural clips; no installed voice is required. These are synthetic performances, not local actor recordings. Engine and horn sounds are synthesized. See [asset provenance](docs/ASSETS.md).
 
 ## Real Pune map data
 
@@ -59,4 +61,8 @@ Requested references:
 
 Benglooru’s public site and controls documentation were inspected after network access was restored. Its public documentation describes a stylized OSM-based map, generated local voices, driving, walking and missions. Its source code and assets have not been copied into this project. The provided YouTube links remain inaccessible through the cloud proxy.
 
-The current result is a playable prototype, not a finished GTA-scale game or photorealistic digital twin. Next fidelity steps require licensed building imagery/3D models, terrain, animated rigged residents, native voice recordings, continuous traffic routing and further spatial batching. The engine currently models a flat city surface and generated building exteriors; it has no interiors, combat or multiplayer.
+The current result is a playable prototype, not a finished GTA-scale game or photorealistic digital twin. Next fidelity steps require licensed building imagery/3D models, terrain, animated rigged residents, native actor recordings, more advanced traffic simulation and further spatial batching. The engine currently models a flat city surface and generated building exteriors; it has no interiors, combat or multiplayer.
+
+The selected first facade-reference target is **Goodluck Chowk toward Fergusson College**. Exact facade reconstruction awaits original overlapping video/photos or licensed reference assets. Current textures and props are illustrative; they do not establish the real colors or signs of those buildings.
+
+[Normalized user walking-tour links and capture requirements](docs/PUNE-REFERENCES.md). Those five videos remain unviewed because the proxy rejected requests.

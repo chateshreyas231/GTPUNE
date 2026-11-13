@@ -27,6 +27,9 @@ const types = new Map([
   [".wasm", "application/wasm"],
   [".css", "text/css; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
+  [".mp3", "audio/mpeg"],
+  [".jpg", "image/jpeg"],
+  [".glb", "model/gltf-binary"],
 ]);
 
 function contentType(filePath) {
@@ -71,7 +74,8 @@ export function createApp({ prototype = false } = {}) {
       (pathname === "/" ||
         pathname === "/index.html" ||
         pathname.startsWith("/assets/") ||
-        pathname.startsWith("/data/"))
+        pathname.startsWith("/data/") ||
+        pathname.startsWith("/audio/"))
     ) {
       if (req.method !== "GET") {
         res.writeHead(405, { allow: "GET" });

@@ -12,6 +12,14 @@ test("renders and supports driving, pause, reset, walking and local dialogue", a
   await page.waitForFunction(() => window.__pune);
   await expect(page.locator("#welcome")).toBeVisible();
   await page.screenshot({ path: "test-results/pune-welcome.png" });
+  await expect
+    .poll(() => page.evaluate(() => window.__pune.state.detailedHumans), {
+      timeout: 20000,
+    })
+    .toBeGreaterThan(0);
+  expect(
+    (await page.evaluate(() => window.__pune.state)).humanHeight,
+  ).toBeLessThan(2.1);
   await page.locator("#play").click();
   await page.locator("#world").click({ position: { x: 700, y: 450 } });
   await page.keyboard.down("w");
@@ -32,13 +40,24 @@ test("renders and supports driving, pause, reset, walking and local dialogue", a
   await page.locator("#reset").click();
   await page.keyboard.press("e");
   expect((await page.evaluate(() => window.__pune.state)).walking).toBe(true);
+  await page.locator("#audio").click();
+  await page.locator("#world").click({ position: { x: 700, y: 450 } });
   await page.keyboard.press("t");
+  await expect
+    .poll(() => page.evaluate(() => window.__pune.state.voiceTime), {
+      timeout: 10000,
+    })
+    .toBeGreaterThan(0);
   await expect(page.locator("#dialogue")).toBeVisible();
   await expect(page.locator("#dialogue")).toContainText(/[\u0900-\u097F]/);
   await page.locator("#language").selectOption("hi-IN");
   await page.locator("#world").click({ position: { x: 700, y: 450 } });
   await page.keyboard.press("t");
   await expect(page.locator("#dialogue")).toContainText("चाय");
+  await page.locator("#job").click();
+  await page.locator("#world").click({ position: { x: 700, y: 450 } });
+  await page.keyboard.press("f");
+  expect((await page.evaluate(() => window.__pune.state)).job).toBe("delivery");
   await page.locator("#lighting").click();
   await expect(page.locator("#lighting")).toHaveText("BLUE HOUR");
   await page.screenshot({ path: "test-results/pune-game.png" });
@@ -90,4 +109,20 @@ test("imported Pune map renders real footprints and allows driving", async ({
   await page.keyboard.up("w");
   await page.screenshot({ path: "test-results/pune-real-map.png" });
   expect(errors).toEqual([]);
+});
+
+test("4K photo exports a 3840 by 2160 PNG", async ({ page }) => {
+  test.setTimeout(90000);
+  await page.route("**/data/pune-osm.json", (r) =>
+    r.fulfill({ status: 404, body: "fixture" }),
+  );
+  await page.goto("/");
+  await page.waitForFunction(() => window.__pune);
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#photo").click();
+  const download = await downloadPromise;
+  const { readFileSync } = await import("node:fs");
+  const bytes = readFileSync(await download.path());
+  expect(bytes.readUInt32BE(16)).toBe(3840);
+  expect(bytes.readUInt32BE(20)).toBe(2160);
 });

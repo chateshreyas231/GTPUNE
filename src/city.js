@@ -207,26 +207,65 @@ export function person(index) {
   const g = new THREE.Group(),
     skin = [0x8a553b, 0xb67b50, 0x754b38, 0xcc996b][index % 4],
     shirt = [0xe9ac52, 0x8aaea6, 0xb66c65, 0xeff0d7, 0x816c9a][index % 5];
-  const mesh = (geo, c, y) => {
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: c }));
-    m.position.y = y;
+  const mat = (c) =>
+    new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
+  const add = (geo, c, x, y, z, parent = g) => {
+    const m = new THREE.Mesh(geo, mat(c));
+    m.position.set(x, y, z);
     m.castShadow = true;
-    g.add(m);
+    parent.add(m);
     return m;
   };
-  mesh(new THREE.SphereGeometry(0.22, 8, 6), skin, 1.65);
-  mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.65, 8), shirt, 1.1);
-  for (const x of [-0.13, 0.13]) {
-    const m = mesh(
-      new THREE.CylinderGeometry(0.09, 0.085, 0.65, 6),
-      0x344848,
-      0.44,
+  add(new THREE.SphereGeometry(0.19, 16, 12), skin, 0, 1.65, 0).scale.set(
+    0.86,
+    1.12,
+    0.9,
+  );
+  add(
+    new THREE.SphereGeometry(0.195, 12, 8),
+    0x242322,
+    0,
+    1.76,
+    0.015,
+  ).scale.set(0.92, 0.55, 0.97);
+  add(new THREE.CylinderGeometry(0.085, 0.09, 0.12, 8), skin, 0, 1.43, 0);
+  add(
+    new THREE.CylinderGeometry(0.23, 0.19, 0.58, 12),
+    shirt,
+    0,
+    1.1,
+    0,
+  ).scale.z = 0.65;
+  for (const x of [-0.065, 0.065]) {
+    add(new THREE.SphereGeometry(0.025, 8, 6), 0xe6dac8, x, 1.68, -0.16);
+    add(new THREE.SphereGeometry(0.012, 6, 6), 0x242424, x, 1.68, -0.181);
+  }
+  add(new THREE.SphereGeometry(0.035, 8, 6), skin, 0, 1.61, -0.18);
+  const legs = [],
+    arms = [];
+  for (const side of [-1, 1]) {
+    const leg = new THREE.Group();
+    leg.position.set(side * 0.11, 0.83, 0);
+    g.add(leg);
+    legs.push(leg);
+    add(new THREE.CapsuleGeometry(0.09, 0.48, 4, 8), 0x344848, 0, -0.3, 0, leg);
+    add(new THREE.BoxGeometry(0.17, 0.13, 0.3), 0x262823, 0, -0.7, -0.05, leg);
+    const arm = new THREE.Group();
+    arm.position.set(side * 0.25, 1.34, 0);
+    g.add(arm);
+    arms.push(arm);
+    add(new THREE.CapsuleGeometry(0.065, 0.4, 4, 8), skin, 0, -0.25, 0, arm);
+    add(new THREE.SphereGeometry(0.075, 8, 6), skin, 0, -0.53, 0, arm);
+  }
+  g.userData.walk = (time, amount = 1) => {
+    legs.forEach(
+      (p, i) =>
+        (p.rotation.x = Math.sin(time * 6 + i * Math.PI) * 0.45 * amount),
     );
-    m.position.x = x;
-  }
-  for (const x of [-0.35, 0.35]) {
-    const m = mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.6, 6), skin, 1.1);
-    m.position.x = x;
-  }
+    arms.forEach(
+      (p, i) =>
+        (p.rotation.x = -Math.sin(time * 6 + i * Math.PI) * 0.35 * amount),
+    );
+  };
   return g;
 }

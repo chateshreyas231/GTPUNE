@@ -551,3 +551,26 @@ dialog .disclosure {
     height: 100px;
   }
 }
+
+#job {
+  margin-top: 18px;
+  padding: 12px 8px;
+  background: #edbd6d;
+  color: #19332b;
+  border: 0;
+  font-size: 9px;
+  letter-spacing: 1px;
+  width: 100%;
+}
+#job-status {
+  color: #ebc98f;
+  font-size: 11px;
+  line-height: 1.7;
+  margin-top: 10px;
+}
+.settings {
+  flex-wrap: wrap;
+}
+#photo {
+  color: #edbd6d;
+}

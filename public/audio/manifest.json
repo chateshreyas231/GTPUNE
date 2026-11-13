@@ -1,0 +1,69 @@
+{
+  "synthetic": true,
+  "provider": "Microsoft Edge neural speech",
+  "clips": [
+    {
+      "file": "mr-IN-0.mp3",
+      "locale": "mr-IN",
+      "voice": "mr-IN-ManoharNeural",
+      "text": "नमस्कार! पुण्यात तुमचं स्वागत आहे.",
+      "sha256": "7c06023d389b23db4f421eaa60827311a5b77e1f63825abd88cb623de96010e4"
+    },
+    {
+      "file": "mr-IN-1.mp3",
+      "locale": "mr-IN",
+      "voice": "mr-IN-ManoharNeural",
+      "text": "चहा घेणार का? पुढे अमृततुल्य आहे.",
+      "sha256": "d251172cc27648bd8c5f26c921556e9256f6b6efe6181a0e1cd4a899de4b3704"
+    },
+    {
+      "file": "mr-IN-2.mp3",
+      "locale": "mr-IN",
+      "voice": "mr-IN-ManoharNeural",
+      "text": "जरा सावकाश जा. पुढे खूप गर्दी आहे.",
+      "sha256": "68f71354f67df2443e9c74930b42728649fe7b04b5535f6e404d431fe3ebcf1a"
+    },
+    {
+      "file": "hi-IN-0.mp3",
+      "locale": "hi-IN",
+      "voice": "hi-IN-SwaraNeural",
+      "text": "नमस्ते! पुणे में आपका स्वागत है।",
+      "sha256": "c568fe068bba1622fae28e0f9b9671f97822384cc314672bb66dd2347feceaf9"
+    },
+    {
+      "file": "hi-IN-1.mp3",
+      "locale": "hi-IN",
+      "voice": "hi-IN-SwaraNeural",
+      "text": "चाय पिएंगे? आगे चाय की दुकान है।",
+      "sha256": "ee71a5222242da35f2c699ba0d645cd3e03ce0234eb6f85bc60a5c7125f8fe0d"
+    },
+    {
+      "file": "hi-IN-2.mp3",
+      "locale": "hi-IN",
+      "voice": "hi-IN-SwaraNeural",
+      "text": "आराम से चलिए। आगे बहुत भीड़ है।",
+      "sha256": "9f43d520cafea1b3c15d257db64ce39e398be1a1f7c7cde4ebb692cd17ddfa1c"
+    },
+    {
+      "file": "en-IN-0.mp3",
+      "locale": "en-IN",
+      "voice": "en-IN-PrabhatNeural",
+      "text": "Namaskar! Welcome to Pune.",
+      "sha256": "8580a7cbe84488a2a74ffcb785ec3a44fc6f79ce84324d24e1068cd07e1b3862"
+    },
+    {
+      "file": "en-IN-1.mp3",
+      "locale": "en-IN",
+      "voice": "en-IN-PrabhatNeural",
+      "text": "Fancy some chai? There is a tea shop up ahead.",
+      "sha256": "cf3eac94242a1893898b9e2594c5a71395f5d706aa184c7fefc7df34b9922cfa"
+    },
+    {
+      "file": "en-IN-2.mp3",
+      "locale": "en-IN",
+      "voice": "en-IN-PrabhatNeural",
+      "text": "Take it easy. The road gets busy ahead.",
+      "sha256": "4440aedf86364a8908bee4445417b4e245835977146183091b278e520d35c407"
+    }
+  ]
+}

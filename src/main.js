@@ -1,3 +1,7 @@
+import { createDelivery, tickDelivery, interactDelivery } from "./delivery.js";
+import { streetDetails } from "./street-details.js";
+import { loadSurfacePhotos, hydrateResidents } from "./visual-assets.js";
+import { lines } from "./dialogue.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import "./style.css";
@@ -19,6 +23,7 @@ try {
 } catch (e) {
   console.warn("Using illustrative map:", e.message);
 }
+const surfacePhotos = await loadSurfacePhotos();
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc6c8ac);
 scene.fog = new THREE.FogExp2(0xc6c8ac, 0.0013);
@@ -64,7 +69,11 @@ scene.add(sun, sun.target);
 const material = (c) =>
   new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 });
 const mats = {
-  road: material(0x485151),
+  road: new THREE.MeshStandardMaterial({
+    color: 0xb0b0b0,
+    map: surfacePhotos.asphalt,
+    roughness: 0.93,
+  }),
   walk: material(0xb2af92),
   mark: material(0xc8c9aa),
   trunk: material(0x6e5c42),
@@ -72,6 +81,12 @@ const mats = {
 };
 function box(w, h, d, mat, x, y, z, parent = scene) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  if (mat === mats.road) {
+    const pos = m.geometry.attributes.position,
+      uv = m.geometry.attributes.uv;
+    for (let i = 0; i < uv.count; i++)
+      uv.setXY(i, pos.getX(i) / 4, pos.getZ(i) / 4);
+  }
   m.position.set(x, y, z);
   m.castShadow = true;
   m.receiveShadow = true;
@@ -134,21 +149,28 @@ function renderRoads(cx, cz) {
 
 function facade() {
   const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 128;
+  c.width = 512;
+  c.height = 512;
   const ctx = c.getContext("2d");
-  ctx.fillStyle = "#e4dbc3";
-  ctx.fillRect(0, 0, 128, 128);
-  for (let y = 5; y < 128; y += 32) {
-    ctx.fillStyle = "#c0b59d";
-    ctx.fillRect(0, y + 24, 128, 2);
-    for (let x = 8; x < 128; x += 32) {
-      ctx.fillStyle = "#4c6060";
-      ctx.fillRect(x, y, 16, 18);
-      ctx.fillStyle = "#809087";
-      ctx.fillRect(x + 2, y + 2, 5, 14);
-      ctx.fillStyle = "#b4b1a0";
-      ctx.fillRect(x - 2, y + 18, 20, 3);
+  ctx.fillStyle = "#c7bc9e";
+  ctx.fillRect(0, 0, 512, 512);
+  if (surfacePhotos.plaster)
+    ctx.drawImage(surfacePhotos.plaster.image, 0, 0, 512, 512);
+  for (let y = 12; y < 512; y += 128) {
+    ctx.fillStyle = "#afa38b";
+    ctx.fillRect(0, y + 107, 512, 6);
+    for (let x = 20; x < 512; x += 128) {
+      ctx.fillStyle = "#302f2c";
+      ctx.fillRect(x - 5, y - 5, 76, 91);
+      ctx.fillStyle = "#637e82";
+      ctx.fillRect(x, y, 66, 78);
+      ctx.fillStyle = "#a7b5ac";
+      ctx.fillRect(x + 5, y + 3, 24, 68);
+      ctx.fillStyle = "#bcb8a4";
+      ctx.fillRect(x + 31, y, 3, 78);
+      ctx.fillRect(x, y + 38, 66, 3);
+      ctx.fillStyle = "#827b6a";
+      ctx.fillRect(x - 8, y + 80, 82, 10);
     }
   }
   const tex = new THREE.CanvasTexture(c);
@@ -177,6 +199,7 @@ const obstacles = city.buildings.map((b) => {
 const buildingGroup = new THREE.Group();
 scene.add(buildingGroup);
 let buildingCenter = new THREE.Vector2(Infinity, Infinity);
+let detailGroup;
 function renderBuildings(cx, cz) {
   for (const mesh of [...buildingGroup.children]) {
     mesh.geometry.dispose();
@@ -201,7 +224,7 @@ function renderBuildings(cx, cz) {
     geo.rotateX(-Math.PI / 2);
     const uv = geo.attributes.uv;
     for (let i = 0; i < uv.count; i++)
-      uv.setXY(i, uv.getX(i) / 22, uv.getY(i) / 15);
+      uv.setXY(i, uv.getX(i) / 10, uv.getY(i) / 12);
     const m = new THREE.Mesh(geo, [
       roofMat,
       buildingMats[Math.floor(b.color * 5) % 5],
@@ -211,6 +234,18 @@ function renderBuildings(cx, cz) {
     buildingGroup.add(m);
   }
   mergeStatic(buildingGroup);
+  if (detailGroup) {
+    scene.remove(detailGroup);
+    detailGroup.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.dispose();
+        o.material.dispose();
+      }
+    });
+  }
+  detailGroup = streetDetails(cx, cz, roadSegments, collides);
+  mergeStatic(detailGroup);
+  scene.add(detailGroup);
 }
 function sign(text, x, z, angle = 0) {
   const c = document.createElement("canvas");
@@ -361,28 +396,53 @@ player.position.set(city.spawn[0], 0, city.spawn[1]);
 const avatar = person(3);
 avatar.visible = false;
 scene.add(avatar);
+const localRoads = roadSegments.filter(
+  (r) => r.length > 25 && segmentDistance(...city.spawn, r.a, r.b) < 300,
+);
+const populationRoads = localRoads.length ? localRoads : roadSegments;
 const pedestrians = [];
 for (let i = 0; i < 72; i++) {
-  const r = roadSegments[(i * 7) % roadSegments.length],
+  const r = populationRoads[(i * 7) % populationRoads.length],
     t = 0.15 + (i % 7) * 0.1,
     dx = (r.b[0] - r.a[0]) / r.length,
     dz = (r.b[1] - r.a[1]) / r.length,
     offset = r.width / 2 + 1.7;
   const p = person(i);
+  if (i > 0 && i % 12 === 1) {
+    p.scale.setScalar(0.68);
+    p.userData.child = true;
+  }
   const start = new THREE.Vector3(
     r.a[0] + (r.b[0] - r.a[0]) * t + dz * offset,
     0,
     r.a[1] + (r.b[1] - r.a[1]) * t - dx * offset,
   );
+  if (p.userData.child && pedestrians.length) {
+    start.copy(pedestrians[pedestrians.length - 1].start);
+    start.x += 0.85;
+  }
   p.position.copy(start);
   scene.add(p);
-  pedestrians.push({ mesh: p, start, angle: r.angle, phase: i });
+  pedestrians.push({
+    mesh: p,
+    start,
+    angle: r.angle,
+    phase: p.userData.child ? i - 1 : i,
+  });
 }
 // Put a resident within conversational reach of the starting point.
 pedestrians[0].start.set(city.spawn[0] + 5, 0, city.spawn[1] - 5);
+const adjacency = new Map();
+const nodeKey = (p) => p.map((v) => v.toFixed(1)).join(",");
+for (const r of roadSegments)
+  for (const end of [r.a, r.b]) {
+    const key = nodeKey(end);
+    if (!adjacency.has(key)) adjacency.set(key, []);
+    adjacency.get(key).push(r);
+  }
 const traffic = [];
 for (let i = 0; i < 24; i++) {
-  const r = roadSegments[(i * 11) % roadSegments.length];
+  const r = populationRoads[(i * 11) % populationRoads.length];
   if (r.length < 30) continue;
   const m = makeCar(
     [0xa7b7b3, 0xe3dac4, 0x678e92, 0xa4523f][i % 4],
@@ -396,6 +456,18 @@ for (let i = 0; i < 24; i++) {
     direction: i % 2 ? 1 : -1,
   });
 }
+let detailedHumans = 0;
+hydrateResidents([
+  avatar,
+  ...pedestrians.filter((_, i) => i % 9 === 0).map((p) => p.mesh),
+])
+  .then((n) => (detailedHumans = n))
+  .catch((e) => console.warn("Human asset fallback", e));
+let job = null,
+  wallet = 0;
+try {
+  wallet = Number(localStorage.getItem("pune-wallet")) || 0;
+} catch {}
 let targetIndex = 0;
 const marker = new THREE.Group();
 const ring = new THREE.Mesh(
@@ -432,6 +504,8 @@ let active = false,
 const keys = new Set();
 let previousTime = performance.now();
 let audioContext, engine, engineGain, toastTimer;
+const voicePlayer = new Audio();
+voicePlayer.volume = 0.9;
 const actor = () => (walking ? avatar : player);
 function toast(text) {
   $("toast").textContent = text;
@@ -457,7 +531,10 @@ function enableSound() {
     engine.start();
   }
   if (sound) audioContext.resume();
-  else window.speechSynthesis?.cancel();
+  else {
+    voicePlayer.pause();
+    window.speechSynthesis?.cancel();
+  }
 }
 function honk() {
   if (!sound) {
@@ -475,23 +552,6 @@ function honk() {
   o.start();
   o.stop(audioContext.currentTime + 0.36);
 }
-const lines = {
-  "mr-IN": [
-    "नमस्कार! पुण्यात तुमचं स्वागत आहे.",
-    "चहा घेणार का? पुढे अमृततुल्य आहे.",
-    "सावकाश जा. पुढे गर्दी आहे.",
-  ],
-  "hi-IN": [
-    "नमस्ते! पुणे में आपका स्वागत है।",
-    "चाय पिएंगे? आगे चाय की दुकान है।",
-    "आराम से चलिए। आगे भीड़ है।",
-  ],
-  "en-IN": [
-    "Welcome to Pune! Enjoy the evening.",
-    "Fancy some chai? There is a tea shop up ahead.",
-    "Take it easy. The road gets busy ahead.",
-  ],
-};
 let talkIndex = 0,
   dialogueTimer;
 function talk() {
@@ -503,7 +563,8 @@ function talk() {
     return;
   }
   const lang = $("language").value,
-    text = lines[lang][talkIndex++ % 3];
+    clipIndex = talkIndex++ % 3,
+    text = lines[lang][clipIndex];
   $("dialogue").replaceChildren();
   const label = document.createElement("small");
   label.textContent = "NEIGHBOUR · शेजारी";
@@ -511,19 +572,12 @@ function talk() {
   $("dialogue").hidden = false;
   clearTimeout(dialogueTimer);
   dialogueTimer = setTimeout(() => ($("dialogue").hidden = true), 6000);
-  if (sound && "speechSynthesis" in window) {
-    const voice = speechSynthesis
-      .getVoices()
-      .find((v) => v.lang.toLowerCase().startsWith(lang.slice(0, 2)));
-    if (voice) {
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = lang;
-      u.voice = voice;
-      u.rate = 0.92;
-      speechSynthesis.speak(u);
-    } else
-      toast("No matching voice installed. Dialogue is shown as subtitles.");
+  if (sound) {
+    voicePlayer.pause();
+    voicePlayer.src = `/audio/${lang}-${clipIndex}.mp3`;
+    voicePlayer
+      .play()
+      .catch(() => toast("Audio could not play. Subtitles remain available."));
   }
 }
 function reset() {
@@ -582,6 +636,42 @@ function collides(x, z, r = 1.4) {
   }
   return false;
 }
+function startJob() {
+  if (job && ["pickup", "delivery"].includes(job.phase)) {
+    toast("Finish the current delivery first.");
+    return;
+  }
+  job = createDelivery(city.spawn, city.stops[0].point);
+  $("job").textContent = "DABBA RUN ACTIVE";
+  toast("Stop near Deccan, get out with E, then press F to collect the dabba.");
+}
+function interactJob() {
+  if (!job) return;
+  const result = interactDelivery(
+    job,
+    [actor().position.x, actor().position.z],
+    walking,
+  );
+  if (result.job.phase === job.phase) {
+    toast("Get out and press F within 14 metres of the delivery marker.");
+    return;
+  }
+  job = result.job;
+  if (result.paid) {
+    wallet += result.paid;
+    try {
+      localStorage.setItem("pune-wallet", String(wallet));
+    } catch {}
+    toast("Delivered! ₹450 added to your wallet.");
+    $("job").textContent = "REPLAY DABBA RUN · ₹450";
+    marker.position.set(
+      city.stops[Math.min(targetIndex, 2)].point[0],
+      0,
+      city.stops[Math.min(targetIndex, 2)].point[1],
+    );
+  } else toast("Dabba collected. Take it to FC Road before the timer ends.");
+}
+$("job").onclick = startJob;
 function action(key) {
   if (key === "p" && active) {
     paused = !paused;
@@ -589,6 +679,8 @@ function action(key) {
   }
   if (paused || !active) return;
   if (key === "e") toggleWalk();
+  if (key === "f") interactJob();
+  if (key === "j") startJob();
   if (key === "c") {
     view = (view + 1) % 3;
     toast(["Chase camera", "Close camera", "Overhead camera"][view]);
@@ -625,6 +717,29 @@ $("play").onclick = () => {
   toast("WASD to drive · E to walk · T to talk");
 };
 $("audio").onclick = enableSound;
+$("photo").onclick = () => {
+  const oldPixelRatio = renderer.getPixelRatio(),
+    size = new THREE.Vector2();
+  renderer.getSize(size);
+  const aspect = camera.aspect;
+  try {
+    renderer.setPixelRatio(1);
+    renderer.setSize(3840, 2160, false);
+    camera.aspect = 3840 / 2160;
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+    const link = document.createElement("a");
+    link.download = "pune-4k.png";
+    link.href = renderer.domElement.toDataURL("image/png");
+    link.click();
+    toast("Saved 3840 × 2160 scene photo.");
+  } finally {
+    renderer.setPixelRatio(oldPixelRatio);
+    renderer.setSize(size.x, size.y, false);
+    camera.aspect = aspect;
+    camera.updateProjectionMatrix();
+  }
+};
 $("reset").onclick = reset;
 $("help").onclick = () => {
   keys.clear();
@@ -751,22 +866,47 @@ function animate() {
       speed = -speed * 0.15;
     }
     actor().rotation.y = yaw;
+    if (walking)
+      avatar.userData.walk?.(elapsed, Math.min(1, Math.abs(speed) / 2));
     const limit = city.source === "illustrative" ? 900 : 6500;
     if (Math.abs(p.x) > limit || Math.abs(p.z) > limit) {
       reset();
       toast("You reached the edge of this city patch.");
     }
     for (const t of traffic) {
-      const old = t.t;
-      t.t = (t.t + (dt * 8) / t.road.length) % 1;
+      const old = t.t,
+        oldRoad = t.road,
+        oldDirection = t.direction;
+      t.t += (dt * 8) / t.road.length;
+      if (t.t > 1) {
+        const endpoint = t.direction === 1 ? t.road.b : t.road.a;
+        const exits = (adjacency.get(nodeKey(endpoint)) || []).filter(
+          (r) => r !== t.road,
+        );
+        if (exits.length) {
+          t.road = exits[Math.floor(elapsed + t.mesh.id) % exits.length];
+          t.direction = nodeKey(t.road.a) === nodeKey(endpoint) ? 1 : -1;
+        } else t.direction *= -1;
+        t.t = 0;
+      }
       const r = t.road,
         dx = (r.b[0] - r.a[0]) / r.length,
         dz = (r.b[1] - r.a[1]) / r.length,
         f = t.direction === 1 ? t.t : 1 - t.t;
       const x = r.a[0] + dx * r.length * f + dz * r.width * 0.22 * t.direction,
         z = r.a[1] + dz * r.length * f - dx * r.width * 0.22 * t.direction;
-      if (Math.hypot(x - p.x, z - p.z) < 7) {
+      if (
+        Math.hypot(x - p.x, z - p.z) < 7 ||
+        traffic.some(
+          (other) =>
+            other !== t &&
+            Math.hypot(x - other.mesh.position.x, z - other.mesh.position.z) <
+              4.5,
+        )
+      ) {
         t.t = old;
+        t.road = oldRoad;
+        t.direction = oldDirection;
         continue;
       }
       t.mesh.position.set(x, 0, z);
@@ -778,17 +918,60 @@ function animate() {
         Math.sin(p.angle) * Math.sin(elapsed * 0.3 + p.phase) * 8;
       p.mesh.position.z +=
         Math.cos(p.angle) * Math.sin(elapsed * 0.3 + p.phase) * 8;
+      p.mesh.userData.walk?.(elapsed + p.phase, 0.8);
       p.mesh.rotation.y =
         p.angle + (Math.cos(elapsed * 0.3 + p.phase) > 0 ? Math.PI : 0);
     }
-    if (targetIndex < 3) {
+    if (job && ["pickup", "delivery"].includes(job.phase)) {
+      job = tickDelivery(job, dt);
+      const point = job.phase === "pickup" ? job.pickup : job.dropoff;
+      marker.visible = true;
+      marker.position.set(point[0], 0, point[1]);
+      $("target").textContent =
+        job.phase === "pickup"
+          ? "DECCAN · COLLECT DABBA"
+          : "FC ROAD · DELIVER DABBA";
+      $("distance").textContent =
+        `${Math.round(Math.hypot(p.x - point[0], p.z - point[1]))} m`;
+      $("job-status").textContent =
+        `${Math.ceil(job.remaining)}s · ${job.phase === "pickup" ? "On foot + F to collect" : "On foot + F to deliver"} · Wallet ₹${wallet}`;
+      if (job.phase === "failed") {
+        $("job").textContent = "RETRY DABBA RUN";
+        toast("Delivery timed out. Start again when ready.");
+      }
+    }
+    if (
+      targetIndex < 3 &&
+      (!job || !["pickup", "delivery"].includes(job.phase))
+    ) {
       const t = city.stops[targetIndex];
       const d = Math.hypot(p.x - t.point[0], p.z - t.point[1]);
       $("distance").textContent =
         d > 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`;
       if (d < 18) {
         targetIndex++;
-        if (targetIndex < 3) {
+        if (job && ["pickup", "delivery"].includes(job.phase)) {
+          job = tickDelivery(job, dt);
+          const point = job.phase === "pickup" ? job.pickup : job.dropoff;
+          marker.visible = true;
+          marker.position.set(point[0], 0, point[1]);
+          $("target").textContent =
+            job.phase === "pickup"
+              ? "DECCAN · COLLECT DABBA"
+              : "FC ROAD · DELIVER DABBA";
+          $("distance").textContent =
+            `${Math.round(Math.hypot(p.x - point[0], p.z - point[1]))} m`;
+          $("job-status").textContent =
+            `${Math.ceil(job.remaining)}s · ${job.phase === "pickup" ? "On foot + F to collect" : "On foot + F to deliver"} · Wallet ₹${wallet}`;
+          if (job.phase === "failed") {
+            $("job").textContent = "RETRY DABBA RUN";
+            toast("Delivery timed out. Start again when ready.");
+          }
+        }
+        if (
+          targetIndex < 3 &&
+          (!job || !["pickup", "delivery"].includes(job.phase))
+        ) {
           const next = city.stops[targetIndex];
           marker.position.set(next.point[0], 0, next.point[1]);
           $("target").textContent = next.name;
@@ -887,6 +1070,15 @@ window.__pune = {
       drawCalls: renderer.info.render.calls,
       roads: city.roads.length,
       buildings: city.buildings.length,
+      detailedHumans,
+      humanHeight: new THREE.Box3()
+        .setFromObject(avatar)
+        .getSize(new THREE.Vector3()).y,
+      voiceTime: voicePlayer.currentTime,
+      voiceReady: voicePlayer.readyState,
+      job: job?.phase || "idle",
+      wallet,
+      voiceLocale: $("language").value,
       nearbyBuildingBatches: buildingGroup.children.length,
     };
   },
