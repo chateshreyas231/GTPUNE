@@ -203,10 +203,39 @@ export function makeCar(color = 0xeee6cc, rickshaw = false) {
     }
   return g;
 }
-export function person(index) {
+// swing > 0 means the left leg is forward. Speed is metres per second.
+// A stopped body returns a zero swing so the pose can stand still.
+export function stepGait(state, dt = 0, speed = 0) {
+  const meters = Math.abs(Number(speed) || 0);
+  const moving = meters > 0.12 ? Math.min(1, (meters - 0.12) / 0.4) : 0;
+  const run = Math.min(1, Math.max(0, (meters - 1.8) / 3));
+  const stride = 1.35 + run * 0.9;
+  const cycles = Math.min(1.85, meters / stride);
+  state.gaitPhase =
+    (state.gaitPhase || 0) + cycles * Math.PI * 2 * Math.max(0, dt);
+  return {
+    swing: Math.sin(state.gaitPhase) * moving,
+    hip: 0.48 + run * 0.34,
+    arm: 0.5 + run * 0.28,
+    knee: 0.95 + run * 0.4,
+    moving,
+    run,
+  };
+}
+export function person(index, options = {}) {
+  const player = options.player === true;
   const g = new THREE.Group(),
-    skin = [0x8a553b, 0xb67b50, 0x754b38, 0xcc996b][index % 4],
-    shirt = [0xe9ac52, 0x8aaea6, 0xb66c65, 0xeff0d7, 0x816c9a][index % 5];
+    skin = player
+      ? 0xd6b08a
+      : [0x8a553b, 0xb67b50, 0x754b38, 0xcc996b][index % 4],
+    shirt = player
+      ? 0xe4dccc
+      : [0xe9ac52, 0x8aaea6, 0xb66c65, 0xeff0d7, 0x816c9a][index % 5],
+    pants = player ? 0x343a42 : 0x344848,
+    hair = player ? 0x1b1714 : 0x242322;
+  g.userData.player = player;
+  g.userData.skin = skin;
+  g.userData.shirt = shirt;
   const mat = (c) =>
     new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
   const add = (geo, c, x, y, z, parent = g) => {
@@ -221,13 +250,11 @@ export function person(index) {
     1.12,
     0.9,
   );
-  add(
-    new THREE.SphereGeometry(0.195, 12, 8),
-    0x242322,
-    0,
-    1.76,
-    0.015,
-  ).scale.set(0.92, 0.55, 0.97);
+  add(new THREE.SphereGeometry(0.195, 12, 8), hair, 0, 1.76, 0.015).scale.set(
+    0.92,
+    0.55,
+    0.97,
+  );
   add(new THREE.CylinderGeometry(0.085, 0.09, 0.12, 8), skin, 0, 1.43, 0);
   add(
     new THREE.CylinderGeometry(0.23, 0.19, 0.58, 12),
@@ -242,30 +269,46 @@ export function person(index) {
   }
   add(new THREE.SphereGeometry(0.035, 8, 6), skin, 0, 1.61, -0.18);
   const legs = [],
+    knees = [],
     arms = [];
   for (const side of [-1, 1]) {
     const leg = new THREE.Group();
-    leg.position.set(side * 0.11, 0.83, 0);
+    leg.name = side < 0 ? "left-leg" : "right-leg";
+    leg.position.set(side * 0.11, 0.84, 0);
     g.add(leg);
     legs.push(leg);
-    add(new THREE.CapsuleGeometry(0.09, 0.48, 4, 8), 0x344848, 0, -0.3, 0, leg);
-    add(new THREE.BoxGeometry(0.17, 0.13, 0.3), 0x262823, 0, -0.7, -0.05, leg);
+    add(new THREE.CapsuleGeometry(0.09, 0.28, 4, 8), pants, 0, -0.2, 0, leg);
+    const shin = new THREE.Group();
+    shin.name = side < 0 ? "left-knee" : "right-knee";
+    shin.position.set(0, -0.42, 0);
+    leg.add(shin);
+    knees.push(shin);
+    add(new THREE.CapsuleGeometry(0.075, 0.26, 4, 8), pants, 0, -0.17, 0, shin);
+    add(
+      new THREE.BoxGeometry(0.16, 0.1, 0.28),
+      0x2a2622,
+      0,
+      -0.36,
+      -0.03,
+      shin,
+    );
     const arm = new THREE.Group();
+    arm.name = side < 0 ? "left-arm" : "right-arm";
     arm.position.set(side * 0.25, 1.34, 0);
     g.add(arm);
     arms.push(arm);
     add(new THREE.CapsuleGeometry(0.065, 0.4, 4, 8), skin, 0, -0.25, 0, arm);
     add(new THREE.SphereGeometry(0.075, 8, 6), skin, 0, -0.53, 0, arm);
   }
-  g.userData.walk = (time, amount = 1) => {
-    legs.forEach(
-      (p, i) =>
-        (p.rotation.x = Math.sin(time * 6 + i * Math.PI) * 0.45 * amount),
-    );
-    arms.forEach(
-      (p, i) =>
-        (p.rotation.x = -Math.sin(time * 6 + i * Math.PI) * 0.35 * amount),
-    );
+  g.userData.walk = (dt = 0, speed = 0) => {
+    const { swing, hip, arm, knee } = stepGait(g.userData, dt, speed);
+    // Positive X swings a hanging limb toward the face (-Z).
+    legs[0].rotation.x = swing * hip;
+    legs[1].rotation.x = -swing * hip;
+    knees[0].rotation.x = -Math.max(0, swing) * knee;
+    knees[1].rotation.x = -Math.max(0, -swing) * knee;
+    arms[0].rotation.x = -swing * arm;
+    arms[1].rotation.x = swing * arm;
   };
   return g;
 }
