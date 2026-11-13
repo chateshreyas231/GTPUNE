@@ -2,6 +2,31 @@ import { createDelivery, tickDelivery, interactDelivery } from "./delivery.js";
 import { streetDetails } from "./street-details.js";
 import { loadSurfacePhotos, hydrateResidents } from "./visual-assets.js";
 import { lines } from "./dialogue.js";
+import {
+  BLUE_HOUR,
+  GOLDEN_HOUR,
+  addPlant,
+  advanceHour,
+  claimGroups,
+  faceYaw,
+  formatClock,
+  makeBicycle,
+  makeBird,
+  makeDog,
+  makeMoonSprite,
+  makeScooter,
+  makeSunSprite,
+  nearbyTalk,
+  parkedBikeSpots,
+  phaseLabel,
+  seedCritters,
+  sidewalkSites,
+  skyForHour,
+  stepRoadAgent,
+  tickCritter,
+  vehiclePose,
+  windowSpots,
+} from "./living.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import "./style.css";
@@ -66,6 +91,73 @@ Object.assign(sun.shadow.camera, {
 });
 sun.shadow.bias = -0.0005;
 scene.add(sun, sun.target);
+const skyCanvas = document.createElement("canvas");
+skyCanvas.width = 4;
+skyCanvas.height = 128;
+const skyCtx = skyCanvas.getContext("2d");
+const skyTexture = new THREE.CanvasTexture(skyCanvas);
+skyTexture.colorSpace = THREE.SRGBColorSpace;
+const skyDome = new THREE.Mesh(
+  new THREE.SphereGeometry(2800, 24, 16),
+  new THREE.MeshBasicMaterial({
+    map: skyTexture,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+  }),
+);
+skyDome.renderOrder = -1;
+const sunOrb = makeSunSprite();
+const moonOrb = makeMoonSprite();
+const rainCount = 240;
+const rainGeo = new THREE.BufferGeometry();
+const rainArray = new Float32Array(rainCount * 2 * 3);
+const rainSeeds = Array.from({ length: rainCount }, () => ({
+  x: (Math.random() - 0.5) * 50,
+  y: Math.random() * 28,
+  z: (Math.random() - 0.5) * 50,
+  speed: 16 + Math.random() * 10,
+}));
+rainGeo.setAttribute("position", new THREE.BufferAttribute(rainArray, 3));
+const rainLines = new THREE.LineSegments(
+  rainGeo,
+  new THREE.LineBasicMaterial({
+    color: 0xd5dee6,
+    transparent: true,
+    opacity: 0.45,
+  }),
+);
+rainLines.frustumCulled = false;
+rainLines.visible = false;
+const windowMat = new THREE.MeshStandardMaterial({
+  color: 0xffe7bf,
+  emissive: 0xffc56a,
+  emissiveIntensity: 0,
+  roughness: 0.35,
+});
+let windowMesh = null;
+function cssColor(hex) {
+  return `#${hex.toString(16).padStart(6, "0")}`;
+}
+function skyBodyPoint(anchor, dir, distance) {
+  const lifted = dir.y > 0 ? Math.max(dir.y, 0.48) : dir.y;
+  const horiz = Math.sqrt(Math.max(0, 1 - lifted * lifted));
+  const flat = Math.hypot(dir.x, dir.z) || 1;
+  return {
+    x: anchor.x + (dir.x / flat) * horiz * distance,
+    y: anchor.y + lifted * distance,
+    z: anchor.z + (dir.z / flat) * horiz * distance,
+  };
+}
+function paintSky(zenith, horizon) {
+  const gradient = skyCtx.createLinearGradient(0, 0, 0, 128);
+  gradient.addColorStop(0, cssColor(zenith));
+  gradient.addColorStop(0.72, cssColor(horizon));
+  gradient.addColorStop(1, cssColor(horizon));
+  skyCtx.fillStyle = gradient;
+  skyCtx.fillRect(0, 0, 4, 128);
+  skyTexture.needsUpdate = true;
+}
 const material = (c) =>
   new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 });
 const mats = {
@@ -78,6 +170,12 @@ const mats = {
   mark: material(0xc8c9aa),
   trunk: material(0x6e5c42),
   leaf: material(0x566d43),
+};
+const plantMats = {
+  trunk: mats.trunk,
+  leaf: [0x566d43, 0x3e6434, 0x6d8944, 0x2c4e30].map((c) => material(c)),
+  shrub: [0x4f7a3e, 0x6a8f48, 0x385e32, 0x7d9a52].map((c) => material(c)),
+  pot: [0xa15b3c, 0xb7b09a, 0x8d4a32].map((c) => material(c)),
 };
 function box(w, h, d, mat, x, y, z, parent = scene) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -200,6 +298,8 @@ const buildingGroup = new THREE.Group();
 scene.add(buildingGroup);
 let buildingCenter = new THREE.Vector2(Infinity, Infinity);
 let detailGroup;
+let glow = null;
+let parkedGroup = null;
 function renderBuildings(cx, cz) {
   for (const mesh of [...buildingGroup.children]) {
     mesh.geometry.dispose();
@@ -244,8 +344,65 @@ function renderBuildings(cx, cz) {
     });
   }
   detailGroup = streetDetails(cx, cz, roadSegments, collides);
+  glow = detailGroup.userData.glow || null;
   mergeStatic(detailGroup);
   scene.add(detailGroup);
+  rebuildWindows(cx, cz);
+  rebuildParked(cx, cz);
+}
+function rebuildWindows(cx, cz) {
+  if (windowMesh) {
+    scene.remove(windowMesh);
+    windowMesh.geometry.dispose();
+    windowMesh = null;
+  }
+  const spots = windowSpots(obstacles, cx, cz);
+  if (!spots.length) return;
+  const boxGeo = new THREE.BoxGeometry(0.72, 0.96, 0.08);
+  const parts = spots.map((spot) => {
+    const geo = boxGeo.clone();
+    const mesh = new THREE.Mesh(geo);
+    mesh.position.set(spot.x, spot.y, spot.z);
+    mesh.rotation.y = spot.yaw;
+    mesh.updateMatrix();
+    geo.applyMatrix4(mesh.matrix);
+    return geo;
+  });
+  windowMesh = new THREE.Mesh(mergeGeometries(parts), windowMat);
+  windowMesh.castShadow = false;
+  windowMesh.receiveShadow = false;
+  scene.add(windowMesh);
+  boxGeo.dispose();
+  for (const geo of parts) geo.dispose();
+}
+function rebuildParked(cx, cz) {
+  if (parkedGroup) {
+    scene.remove(parkedGroup);
+    parkedGroup.traverse((object) => {
+      if (object.isMesh) {
+        object.geometry.dispose();
+        object.material.dispose();
+      }
+    });
+  }
+  parkedGroup = new THREE.Group();
+  const near = roadSegments.filter(
+    (road) => road.length > 24 && segmentDistance(cx, cz, road.a, road.b) < 220,
+  );
+  for (const spot of parkedBikeSpots(near, 18, { x: cx, z: cz })) {
+    if (collides(spot.x, spot.z, 0.45)) continue;
+    if (
+      roadSegments.some(
+        (road) => segmentDistance(spot.x, spot.z, road.a, road.b) < road.width / 2 + 0.35,
+      )
+    )
+      continue;
+    const bike = makeBicycle(spot.color);
+    bike.position.set(spot.x, 0, spot.z);
+    bike.rotation.y = spot.yaw;
+    parkedGroup.add(bike);
+  }
+  scene.add(parkedGroup);
 }
 function sign(text, x, z, angle = 0) {
   const c = document.createElement("canvas");
@@ -279,7 +436,7 @@ const shopNames = [
   "नमस्कार पुणे",
   "BAKERY & CAFÉ",
 ];
-const treeGeo = new THREE.IcosahedronGeometry(1, 1);
+let plantIndex = 0;
 for (
   let i = 0;
   i < roadSegments.length;
@@ -299,12 +456,15 @@ for (
         )
       )
         continue;
-      box(0.65, 5, 0.65, mats.trunk, x, 2.5, z);
-      const tree = new THREE.Mesh(treeGeo, mats.leaf);
-      tree.scale.set(4.5, 5.5, 4.5);
-      tree.position.set(x, 7, z);
-      tree.castShadow = true;
-      scene.add(tree);
+      addPlant(scene, plantMats, x, z, plantIndex++);
+      if (plantIndex % 3 === 0)
+        addPlant(
+          scene,
+          plantMats,
+          x + dz * 1.8 * side,
+          z - dx * 1.8 * side,
+          plantIndex + 500,
+        );
     }
   }
 }
@@ -381,6 +541,7 @@ function mergeStatic(root) {
   }
 }
 mergeStatic(scene);
+scene.add(skyDome, sunOrb, moonOrb, rainLines);
 renderBuildings(city.spawn[0], city.spawn[1]);
 const spawnRoad = roadSegments.reduce((a, b) =>
   segmentDistance(...city.spawn, a.a, a.b) <
@@ -432,6 +593,21 @@ for (let i = 0; i < 72; i++) {
 }
 // Put a resident within conversational reach of the starting point.
 pedestrians[0].start.set(city.spawn[0] + 5, 0, city.spawn[1] - 5);
+pedestrians[0].mesh.position.copy(pedestrians[0].start);
+const talkGroups = claimGroups(pedestrians);
+if (talkGroups[0]) {
+  const group = talkGroups[0];
+  const dx = city.spawn[0] + 11 - group.x;
+  const dz = city.spawn[1] - 6 - group.z;
+  group.x += dx;
+  group.z += dz;
+  for (const member of group.members) {
+    member.start.x += dx;
+    member.start.z += dz;
+    member.mesh.position.x += dx;
+    member.mesh.position.z += dz;
+  }
+}
 const adjacency = new Map();
 const nodeKey = (p) => p.map((v) => v.toFixed(1)).join(",");
 for (const r of roadSegments)
@@ -459,6 +635,57 @@ for (let i = 0; i < trafficTarget; i++) {
     speed: 6.5 + (i % 7) * 1.15,
   });
 }
+const riders = [];
+const scooterColors = [0xc4553a, 0x245c86, 0xd7c56a, 0x2f6b45, 0x4a3d6b, 0xe8efe8];
+for (let i = 0; i < 8; i++) {
+  const road = trafficRoads[(i * 53 + 7) % trafficRoads.length];
+  const direction = i % 2 ? 1 : -1;
+  let t = (i * 0.17 + 0.31) % 1;
+  let pose = vehiclePose(road, t, direction, 0.36);
+  if (Math.hypot(pose.x - city.spawn[0], pose.z - city.spawn[1]) < 26) {
+    t = (t + 0.41) % 1;
+    pose = vehiclePose(road, t, direction, 0.36);
+  }
+  const mesh = makeScooter(scooterColors[i % scooterColors.length]);
+  mesh.position.set(pose.x, 0, pose.z);
+  mesh.rotation.y = pose.yaw;
+  scene.add(mesh);
+  riders.push({ mesh, road, t, direction, speed: 9 + (i % 4) * 1.4 });
+}
+if (riders[0] && spawnRoad) {
+  let best = null;
+  for (let t = 0; t <= 1; t += 0.02) {
+    for (const direction of [1, -1]) {
+      const pose = vehiclePose(spawnRoad, t, direction, 0.36);
+      const score =
+        Math.abs(pose.x - city.spawn[0]) + Math.abs(pose.z - (city.spawn[1] - 32));
+      if (!best || score < best.score) best = { score, t, direction, pose };
+    }
+  }
+  if (best && best.score < 24) {
+    const lead = riders[0];
+    lead.road = spawnRoad;
+    lead.t = best.t;
+    lead.direction = best.direction;
+    lead.mesh.position.set(best.pose.x, 0, best.pose.z);
+    lead.mesh.rotation.y = best.pose.yaw;
+  }
+}
+const critterSites = sidewalkSites(populationRoads, 12, 3.4, 18, {
+  x: city.spawn[0],
+  z: city.spawn[1],
+});
+const critters = seedCritters(
+  critterSites.length
+    ? critterSites
+    : [{ x: city.spawn[0] + 8, z: city.spawn[1] + 6 }],
+);
+critters.forEach((critter, index) => {
+  critter.mesh =
+    critter.kind === "dog" ? makeDog(index) : makeBird(critter.kind, index);
+  critter.mesh.position.set(critter.x, critter.y, critter.z);
+  scene.add(critter.mesh);
+});
 let detailedHumans = 0;
 hydrateResidents([
   avatar,
@@ -502,8 +729,16 @@ let active = false,
   view = 0,
   sound = false,
   night = false,
+  hour = GOLDEN_HOUR,
+  cycling = true,
+  rainOn = false,
   elapsed = 0,
+  lifeTime = 0,
   distanceTravelled = 0;
+let skyState = skyForHour(GOLDEN_HOUR, false);
+let playerTalkUntil = 0;
+let dialogueSource = "";
+let shownTalk = "";
 const keys = new Set();
 let previousTime = performance.now();
 let audioContext, engine, engineGain, toastTimer;
@@ -573,8 +808,16 @@ function talk() {
   label.textContent = "NEIGHBOUR · शेजारी";
   $("dialogue").append(label, document.createTextNode(text));
   $("dialogue").hidden = false;
+  playerTalkUntil = performance.now() + 6000;
+  dialogueSource = "player";
+  shownTalk = `player:${text}`;
   clearTimeout(dialogueTimer);
-  dialogueTimer = setTimeout(() => ($("dialogue").hidden = true), 6000);
+  dialogueTimer = setTimeout(() => {
+    if (dialogueSource !== "player") return;
+    $("dialogue").hidden = true;
+    dialogueSource = "";
+    shownTalk = "";
+  }, 6000);
   if (sound) {
     voicePlayer.pause();
     voicePlayer.src = `/audio/${lang}-${clipIndex}.mp3`;
@@ -690,6 +933,8 @@ function action(key) {
   }
   if (key === "h") honk();
   if (key === "t") talk();
+  if (key === "r") toggleRain();
+  if (key === "n") toggleCycle();
 }
 window.addEventListener("keydown", (e) => {
   if (
@@ -749,14 +994,127 @@ $("help").onclick = () => {
   $("instructions").showModal();
 };
 $("close-help").onclick = $("resume").onclick = () => $("instructions").close();
+function applyAtmosphere(anchor) {
+  skyState = skyForHour(hour, rainOn);
+  paintSky(skyState.zenith, skyState.sky);
+  scene.background.set(skyState.sky);
+  scene.fog.color.copy(scene.background);
+  scene.fog.density = skyState.fogDensity;
+  sun.color.set(skyState.sunColor);
+  sun.intensity = skyState.sunIntensity;
+  hemi.color.set(skyState.hemiSky);
+  hemi.groundColor.set(skyState.hemiGround);
+  hemi.intensity = skyState.hemi;
+  renderer.toneMappingExposure = skyState.exposure;
+  const body = skyState.phase === "night" ? skyState.moon : skyState.sun;
+  const lift = Math.max(body.y, skyState.phase === "night" ? 0.42 : 0.32);
+  const len = Math.hypot(body.x, lift, body.z) || 1;
+  sun.position.set(
+    anchor.x + (body.x / len) * 220,
+    (lift / len) * 240,
+    anchor.z + (body.z / len) * 220,
+  );
+  sun.target.position.set(anchor.x, 0, anchor.z);
+  sun.target.updateMatrixWorld();
+  sunOrb.visible = skyState.sunVisible;
+  moonOrb.visible = skyState.moonVisible;
+  const sunPoint = skyBodyPoint(anchor, skyState.sun, 320);
+  const moonPoint = skyBodyPoint(anchor, skyState.moon, 340);
+  sunOrb.position.set(sunPoint.x, sunPoint.y, sunPoint.z);
+  moonOrb.position.set(moonPoint.x, moonPoint.y, moonPoint.z);
+  skyDome.position.copy(anchor);
+  rainLines.visible = rainOn;
+  mats.road.color.set(rainOn ? 0x8a8e90 : 0xb0b0b0);
+  windowMat.emissiveIntensity = skyState.windows * 1.7;
+  if (windowMesh) windowMesh.visible = skyState.windows > 0.08;
+  if (glow) {
+    glow.lamp.emissiveIntensity = skyState.lamps * 1.25;
+    for (const light of glow.lights) light.intensity = skyState.lamps * 7;
+  }
+  if (cycling) $("lighting").textContent = phaseLabel(skyState.phase);
+}
+function toggleRain() {
+  rainOn = !rainOn;
+  $("weather").textContent = rainOn ? "RAIN" : "CLEAR";
+  applyAtmosphere(actor().position);
+  toast(rainOn ? "Rain over the neighbourhood." : "The rain has passed.");
+}
+function toggleCycle() {
+  cycling = !cycling;
+  $("cycle").textContent = cycling ? "CYCLE ON" : "CYCLE OFF";
+  if (!cycling) {
+    night = skyState.phase === "blue" || skyState.phase === "night";
+    $("lighting").textContent = phaseLabel(skyState.phase);
+  }
+  applyAtmosphere(actor().position);
+  toast(cycling ? "The day keeps moving." : "The sky is held still.");
+}
+function stepRain(anchor, dt) {
+  const attr = rainGeo.attributes.position;
+  for (let i = 0; i < rainCount; i++) {
+    const seed = rainSeeds[i];
+    seed.y -= seed.speed * dt;
+    if (seed.y < 0) seed.y = 26;
+    const x = anchor.x + seed.x;
+    const z = anchor.z + seed.z;
+    attr.setXYZ(i * 2, x, seed.y, z);
+    attr.setXYZ(i * 2 + 1, x + 0.18, seed.y - 1.35, z + 0.06);
+  }
+  attr.needsUpdate = true;
+}
+function stepLife(dt, anchor, time) {
+  critters.forEach((critter, index) => {
+    if (Math.hypot(critter.x - anchor.x, critter.z - anchor.z) > 78) {
+      const nearRoads = [];
+      for (const road of roadSegments) {
+        if (segmentDistance(anchor.x, anchor.z, road.a, road.b) < 48) nearRoads.push(road);
+        if (nearRoads.length > 8) break;
+      }
+      const site = sidewalkSites(nearRoads, 12, 3.1, 16)[index % 12];
+      critter.homeX = site ? site.x : anchor.x + 6;
+      critter.homeZ = site ? site.z : anchor.z + 4;
+      critter.x = critter.homeX;
+      critter.z = critter.homeZ;
+    }
+    tickCritter(critter, dt, time);
+    critter.mesh.position.set(critter.x, critter.y, critter.z);
+    critter.mesh.rotation.y = critter.heading + Math.PI;
+    critter.mesh.userData.pose?.(time, critter);
+  });
+  for (const rider of riders) {
+    const next = stepRoadAgent(rider, dt, {
+      adjacency,
+      nodeKey,
+      player: { x: anchor.x, z: anchor.z },
+      others: [
+        ...traffic.map((car) => ({ x: car.mesh.position.x, z: car.mesh.position.z })),
+        ...riders
+          .filter((other) => other !== rider)
+          .map((other) => ({ x: other.mesh.position.x, z: other.mesh.position.z })),
+      ],
+      lane: 0.36,
+      playerRadius: 8,
+      gap: 4.2,
+      pick: time + rider.mesh.id,
+    });
+    rider.t = next.t;
+    rider.road = next.road;
+    rider.direction = next.direction;
+    rider.mesh.position.set(next.pose.x, 0, next.pose.z);
+    rider.mesh.rotation.y = next.pose.yaw;
+  }
+  if (rainOn) stepRain(anchor, dt);
+}
 $("lighting").onclick = () => {
   night = !night;
+  cycling = false;
+  $("cycle").textContent = "CYCLE OFF";
+  hour = night ? BLUE_HOUR : GOLDEN_HOUR;
   $("lighting").textContent = night ? "BLUE HOUR" : "GOLDEN HOUR";
-  scene.background.set(night ? 0x526675 : 0xc6c8ac);
-  scene.fog.color.copy(scene.background);
-  sun.intensity = night ? 0.4 : 3.5;
-  hemi.intensity = night ? 1 : 2.3;
+  applyAtmosphere(actor().position);
 };
+$("weather").onclick = toggleRain;
+$("cycle").onclick = toggleCycle;
 for (const b of document.querySelectorAll("[data-key]")) {
   b.onpointerdown = (e) => {
     e.preventDefault();
@@ -923,6 +1281,15 @@ function drawMap() {
       map.fillRect(-3.5, -2, 7, 4);
       map.restore();
     }
+    map.fillStyle = "#d7e2c8";
+    for (const rider of riders) {
+      const x = rider.mesh.position.x;
+      const z = rider.mesh.position.z;
+      if (!visible(x, z)) continue;
+      map.beginPath();
+      map.arc(sx(x), sy(z), 2.1, 0, Math.PI * 2);
+      map.fill();
+    }
   }
   if (walking) {
     map.save();
@@ -981,7 +1348,8 @@ function animate() {
   const dt = Math.min((now - previousTime) / 1000, 0.05);
   previousTime = now;
   const running = active && !paused && !$("instructions").open;
-  if (running) {
+    if (running) {
+    if (cycling) hour = advanceHour(hour, dt, true);
     elapsed += dt;
     const accel =
       (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
@@ -1003,11 +1371,17 @@ function animate() {
     const p = actor().position,
       nx = p.x - Math.sin(yaw) * speed * dt,
       nz = p.z - Math.cos(yaw) * speed * dt;
-    const hitTraffic = traffic.some(
-      (t) =>
-        Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) <
-        (walking ? 1.8 : 3),
-    );
+    const hitTraffic =
+      traffic.some(
+        (t) =>
+          Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) <
+          (walking ? 1.8 : 3),
+      ) ||
+      riders.some(
+        (t) =>
+          Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) <
+          (walking ? 1.3 : 2.2),
+      );
     const hitPed =
       !walking &&
       pedestrians.some(
@@ -1056,6 +1430,10 @@ function animate() {
             other !== t &&
             Math.hypot(x - other.mesh.position.x, z - other.mesh.position.z) <
               4.5,
+        ) ||
+        riders.some(
+          (other) =>
+            Math.hypot(x - other.mesh.position.x, z - other.mesh.position.z) < 4.2,
         )
       ) {
         t.t = old;
@@ -1066,15 +1444,27 @@ function animate() {
       t.mesh.position.set(x, 0, z);
       t.mesh.rotation.y = r.angle + (t.direction === 1 ? Math.PI : 0);
     }
-    for (const p of pedestrians) {
-      p.mesh.position.copy(p.start);
-      p.mesh.position.x +=
-        Math.sin(p.angle) * Math.sin(elapsed * 0.3 + p.phase) * 8;
-      p.mesh.position.z +=
-        Math.cos(p.angle) * Math.sin(elapsed * 0.3 + p.phase) * 8;
-      p.mesh.userData.walk?.(elapsed + p.phase, 0.8);
-      p.mesh.rotation.y =
-        p.angle + (Math.cos(elapsed * 0.3 + p.phase) > 0 ? Math.PI : 0);
+    for (const person of pedestrians) {
+      if (person.group) {
+        const sway = Math.sin(elapsed * 0.8 + person.phase) * 0.05;
+        person.mesh.position.set(person.start.x + sway, 0, person.start.z);
+        person.mesh.rotation.y = faceYaw(
+          person.mesh.position.x,
+          person.mesh.position.z,
+          person.group.x,
+          person.group.z,
+        );
+        person.mesh.userData.walk?.(elapsed + person.phase, 0.16);
+      } else {
+        person.mesh.position.copy(person.start);
+        person.mesh.position.x +=
+          Math.sin(person.angle) * Math.sin(elapsed * 0.3 + person.phase) * 8;
+        person.mesh.position.z +=
+          Math.cos(person.angle) * Math.sin(elapsed * 0.3 + person.phase) * 8;
+        person.mesh.userData.walk?.(elapsed + person.phase, 0.8);
+        person.mesh.rotation.y =
+          person.angle + (Math.cos(elapsed * 0.3 + person.phase) > 0 ? Math.PI : 0);
+      }
     }
     if (job && ["pickup", "delivery"].includes(job.phase)) {
       job = tickDelivery(job, dt);
@@ -1142,6 +1532,30 @@ function animate() {
         }
       }
     }
+    const heard = nearbyTalk({
+      groups: talkGroups,
+      x: p.x,
+      z: p.z,
+      lang: $("language").value,
+      time: lifeTime,
+      playerTalking: performance.now() < playerTalkUntil,
+    });
+    if (heard) {
+      const key = `street:${heard.text}`;
+      if (shownTalk !== key) {
+        shownTalk = key;
+        dialogueSource = "street";
+        $("dialogue").replaceChildren();
+        const label = document.createElement("small");
+        label.textContent = "STREET TALK · गप्पा";
+        $("dialogue").append(label, document.createTextNode(heard.text));
+        $("dialogue").hidden = false;
+      }
+    } else if (dialogueSource === "street") {
+      $("dialogue").hidden = true;
+      dialogueSource = "";
+      shownTalk = "";
+    }
   }
   if (engineGain) {
     engineGain.gain.setTargetAtTime(
@@ -1174,9 +1588,11 @@ function animate() {
   }
   camera.position.lerp(desiredCamera, 1 - Math.exp(-dt * 4));
   camera.lookAt(look);
-  sun.position.set(p.x - 170, 240, p.z + 80);
-  sun.target.position.set(p.x, 0, p.z);
-  sun.target.updateMatrixWorld();
+  if (!paused && !$("instructions").open) {
+    lifeTime += dt;
+    stepLife(dt, p, lifeTime);
+  }
+  applyAtmosphere(p);
   marker.rotation.y += dt * 0.3;
   if (frame++ % 4 === 0) {
     drawMap();
@@ -1188,6 +1604,7 @@ function animate() {
       Math.min(100, (Math.abs(speed) / 38) * 100) + "%";
     $("gear").textContent = speed < -0.2 ? "R" : speed > 0.2 ? "D" : "N";
     $("mode").textContent = walking ? "ON FOOT / EXPLORE" : "COMPACT / STREET";
+    $("time").textContent = formatClock(hour);
     const nearest = city.stops.reduce((a, b) =>
       Math.hypot(p.x - a.point[0], p.z - a.point[1]) <
       Math.hypot(p.x - b.point[0], p.z - b.point[1])
@@ -1234,6 +1651,13 @@ window.__pune = {
       wallet,
       voiceLocale: $("language").value,
       nearbyBuildingBatches: buildingGroup.children.length,
+      hour,
+      rain: rainOn,
+      cycling,
+      phase: skyState.phase,
+      critters: critters.length,
+      riders: riders.length,
+      groups: talkGroups.length,
     };
   },
 };

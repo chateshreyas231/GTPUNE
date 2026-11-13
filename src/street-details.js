@@ -14,7 +14,15 @@ export function streetDetails(cx, cz, roads, blocked) {
     }),
     cloth: new THREE.MeshStandardMaterial({ color: 0xa44b33, roughness: 1 }),
     concrete: new THREE.MeshStandardMaterial({ color: 0xaaa28e, roughness: 1 }),
+    clay: new THREE.MeshStandardMaterial({ color: 0xa15b3c, roughness: 0.9 }),
+    lamp: new THREE.MeshStandardMaterial({
+      color: 0xffe2b0,
+      emissive: 0xffc56a,
+      emissiveIntensity: 0,
+      roughness: 0.35,
+    }),
   };
+  const lights = [];
   const add = (geo, mat, x, y, z) => {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
@@ -39,29 +47,84 @@ export function streetDetails(cx, cz, roads, blocked) {
         )
           continue;
         const seed = placed++;
-        box(1.8, 0.4, 1.8, mats.concrete, x, 0.2, z);
-        add(
-          new THREE.CylinderGeometry(0.18, 0.28, 4.4, 8),
-          mats.wood,
-          x,
-          2.4,
-          z,
-        );
-        for (let n = 0; n < 7; n++) {
-          const angle = n * 2.4 + seed,
-            rr = (n % 3) * 1.1;
-          const leaf = add(
-            new THREE.SphereGeometry(1, 8, 6),
-            n % 2 ? mats.leaf : mats.leaf2,
-            x + Math.cos(angle) * rr,
-            4.7 + (n % 3) * 0.7,
-            z + Math.sin(angle) * rr,
+        const scale = 0.7 + (seed % 6) * 0.11;
+        if (seed % 5 === 3) {
+          add(new THREE.CylinderGeometry(0.28, 0.22, 0.42, 8), mats.clay, x, 0.22, z);
+          const sprout = add(
+            new THREE.SphereGeometry(0.32, 7, 5),
+            seed % 2 ? mats.leaf : mats.leaf2,
+            x,
+            0.55,
+            z,
           );
-          leaf.scale.set(2.1, 1.4, 1.8);
+          sprout.scale.set(scale, scale * 0.8, scale);
+        } else if (seed % 5 === 2) {
+          const shrub = add(
+            new THREE.SphereGeometry(0.55, 7, 5),
+            mats.leaf2,
+            x,
+            0.5,
+            z,
+          );
+          shrub.scale.set(1.5 * scale, 0.85 * scale, 1.2 * scale);
+          const shrub2 = add(
+            new THREE.SphereGeometry(0.4, 7, 5),
+            mats.leaf,
+            x + 0.55,
+            0.4,
+            z + 0.2,
+          );
+          shrub2.scale.set(scale, scale * 0.75, scale);
+        } else {
+          box(1.8 * scale, 0.4, 1.8 * scale, mats.concrete, x, 0.2, z);
+          add(
+            new THREE.CylinderGeometry(0.16 * scale, 0.26 * scale, 4.2 * scale, 7),
+            mats.wood,
+            x,
+            2.2 * scale,
+            z,
+          );
+          for (let n = 0; n < 6; n++) {
+            const angle = n * 2.4 + seed,
+              rr = (n % 3) * 0.9 * scale;
+            const leaf = add(
+              new THREE.SphereGeometry(1, 7, 5),
+              n % 2 ? mats.leaf : mats.leaf2,
+              x + Math.cos(angle) * rr,
+              (4.2 + (n % 3) * 0.65) * scale,
+              z + Math.sin(angle) * rr,
+            );
+            leaf.scale.set(1.8 * scale, 1.25 * scale, 1.55 * scale);
+          }
+        }
+        if (seed % 4 === 1) {
+          const pot = add(
+            new THREE.CylinderGeometry(0.22, 0.18, 0.36, 7),
+            seed % 2 ? mats.clay : mats.concrete,
+            x + 1.3,
+            0.18,
+            z + 0.4,
+          );
+          pot.scale.setScalar(0.85 + (seed % 3) * 0.12);
+          add(
+            new THREE.SphereGeometry(0.22, 6, 5),
+            mats.leaf,
+            x + 1.3,
+            0.48,
+            z + 0.4,
+          ).scale.setScalar(0.8 + (seed % 3) * 0.15);
         }
         if (seed % 6 === 0) {
           box(0.1, 6, 0.1, mats.metal, x + 2, 3, z);
           box(1.2, 0.12, 0.5, mats.metal, x + 2.4, 6, z);
+          const head = add(new THREE.SphereGeometry(0.18, 8, 6), mats.lamp, x + 2.4, 5.7, z);
+          head.castShadow = false;
+          if (lights.length < 5) {
+            const light = new THREE.PointLight(0xffd2a1, 0, 16, 2);
+            light.position.set(x + 2.4, 5.5, z);
+            root.add(light);
+            lights.push(light);
+          }
         }
         if (seed % 5 === 0) {
           const bench = box(2, 0.15, 0.65, mats.wood, x + 2, 0.6, z + 1);
@@ -95,5 +158,6 @@ export function streetDetails(cx, cz, roads, blocked) {
       );
     }
   }
+  root.userData.glow = { lamp: mats.lamp, lights };
   return root;
 }
