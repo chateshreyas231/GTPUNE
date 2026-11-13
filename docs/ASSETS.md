@@ -6,9 +6,11 @@
 
 ## Animated resident reference
 
-`public/assets/characters/michelle.glb` comes from the Three.js example assets at https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf. The Michelle character is a Mixamo reference model. Adobe's FAQ permits royalty-free character/animation use in video games: https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html. It is included as part of this game, not offered as a standalone asset library. Retain the source/provenance when distributing the game and consult Adobe's terms for other uses.
+The player and street pedestrians use these GLB files in `public/assets/characters/`:
 
-This is a stylized rigged reference civilian, not a photorealistic Maharashtrian person. The runtime normalizes its scale after posing and generates a simple walking cycle. Other residents and smaller family figures use original procedural geometry. They need higher-quality character art and animation to reach the requested realism.
+- `casual-male.glb`, `casual-female.glb`, `casual2-male.glb`, `casual2-female.glb`, `casual-bald.glb`, `worker-male.glb`, `old-classy-female.glb`
+
+They come from the Ultimate Animated Character pack by Quaternius, as uploaded by Quaternius on OpenGameArt: https://opengameart.org/content/animated-characters-pack . The submission lists the license as CC0 and links to https://creativecommons.org/publicdomain/zero/1.0/ . The game keeps the Idle and Walk clips, scales the rigs to about 1.72 m, and recolors the named Skin, Face, Shirt, Pants, Hair, Hat, Vest, Detail and Belt materials. Wheatish skin stays between `#C89870` and `#E8C4A2`. The Mixamo Michelle reference is not shipped.
 
 ## Voices
 
