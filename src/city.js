@@ -61,8 +61,17 @@ export function fallbackCity() {
 }
 // Survey constants from public/data/pune-osm.json. See docs/MEASUREMENTS.md.
 // 46 buildings carry both height and building:levels. Their storey median is
-// 3.33 m and the lower quartile is 3.00 m, so an untagged level is 3 m.
+// 3.33 m and the lower quartile is 3.00 m, so a tagged level is 3 m.
 export const STOREY_METERS = 3;
+// The player rig stands about 1.72 m. A street storey is 2 m so a person
+// reads as about one storey, with a little clearance over the head.
+export const PERSON_METERS = 1.72;
+export const PERSON_STOREY = 2;
+// A typical FC Road mass is the person plus several storeys above them.
+const STREET_FLOORS = 9;
+const STREET_FLOORS_MIN = 6;
+const STREET_FLOORS_MAX = 14;
+const STREET_KINDS = new Set(["yes", "residential", "retail", "commercial"]);
 // IRC urban lane, used only when a way has lanes but no width tag.
 export const LANE_METERS = 3.5;
 // Modal `lanes` among tagged ways: primary 2 (108/196), secondary 2 (66/85),
@@ -135,6 +144,12 @@ export function sidewalkMeters(name = "") {
   return 1.6;
 }
 
+function isStreetWall(kind) {
+  if (STREET_KINDS.has(kind)) return true;
+  if (kind && Object.prototype.hasOwnProperty.call(TYPE_FLOORS, kind)) return false;
+  return true;
+}
+
 export function buildingSizeFromTags(tags = {}) {
   const tagged = parseMeters(tags.height);
   if (tagged > 0) {
@@ -143,6 +158,8 @@ export function buildingSizeFromTags(tags = {}) {
       height,
       floors: Math.max(1, Math.round(height / STOREY_METERS)),
       heightSource: "height-tag",
+      storey: STOREY_METERS,
+      street: false,
     };
   }
   const levels = parseMeters(tags["building:levels"]);
@@ -152,13 +169,27 @@ export function buildingSizeFromTags(tags = {}) {
       height: Math.min(120, Math.max(3, floors * STOREY_METERS)),
       floors,
       heightSource: "levels-tag",
+      storey: STOREY_METERS,
+      street: false,
     };
   }
   const floors = TYPE_FLOORS[tags.building] || TYPE_FLOORS.yes;
+  if (!isStreetWall(tags.building)) {
+    return {
+      height: floors * STOREY_METERS,
+      floors,
+      heightSource: "type-default",
+      storey: STOREY_METERS,
+      street: false,
+    };
+  }
+  const readFloors = Math.max(floors, STREET_FLOORS);
   return {
-    height: floors * STOREY_METERS,
-    floors,
+    height: readFloors * PERSON_STOREY,
+    floors: readFloors,
     heightSource: "type-default",
+    storey: PERSON_STOREY,
+    street: true,
   };
 }
 
@@ -265,6 +296,8 @@ export function parseOSM(data) {
         height: measured.height,
         floors: measured.floors,
         heightSource: measured.heightSource,
+        storey: measured.storey,
+        street: measured.street,
         kind: e.tags.building,
         id: e.id,
         name: e.tags.name || "",
@@ -307,9 +340,11 @@ export function parseOSM(data) {
     { name: "KOTHRUD", point: nearest(project(18.5074, 73.8077)) },
     { name: "DECCAN GYMKHANA", point: spawn },
   ];
+  staggerMatchedHeights(buildings);
   const surveyed = buildings.length;
   const infill = fillBuildingGaps(buildings, roads);
   for (const extra of infill) buildings.push(extra);
+  staggerMatchedHeights(buildings);
   return {
     source: "OpenStreetMap",
     roads,
@@ -498,18 +533,19 @@ export function fillBuildingGaps(buildings, roads) {
       ];
       if (footprint.some(([x, z]) => onRoad(x, z) || occupied(x, z, null))) continue;
       if (onRoad(cx, cz) || occupied(cx, cz, null)) continue;
-      const height = Math.min(
-        36,
-        Math.max(
-          3,
-          ((item.building.height || 9) + (neighbor.building.height || 9)) / 2,
-        ),
+      const height = variedInfillHeight(
+        item.building.height || 9,
+        neighbor.building.height || 9,
+        cx,
+        cz,
       );
       const extra = {
         points: footprint,
         height,
-        floors: Math.max(1, Math.round(height / STOREY_METERS)),
+        floors: Math.max(1, Math.round(height / PERSON_STOREY)),
         heightSource: "infill",
+        storey: PERSON_STOREY,
+        street: false,
         kind: "yes",
         color: ((infill.length * 17) % 100) / 100,
         infill: true,
@@ -523,6 +559,149 @@ export function fillBuildingGaps(buildings, roads) {
     }
   }
   return infill;
+}
+
+function hash2(x, z) {
+  let n =
+    Math.imul(Math.round(x * 10) | 0, 374761393) ^
+    Math.imul(Math.round(z * 10) | 0, 668265263);
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return n >>> 0;
+}
+
+// Infill takes a height from the two roofs it sits between. Equal roofs are
+// stepped by a person-storey so the fill is not one flat height.
+function variedInfillHeight(h1, h2, x, z) {
+  const lo = Math.min(h1, h2);
+  const hi = Math.max(h1, h2);
+  const span = hi - lo;
+  const h = hash2(x, z);
+  let height;
+  if (span < PERSON_STOREY * 0.75) {
+    const steps = (h % 3) + 1;
+    const sign = h & 32 ? 1 : -1;
+    height = lo + sign * steps * PERSON_STOREY;
+    const minH =
+      lo >= STREET_FLOORS_MIN * PERSON_STOREY - 0.01
+        ? STREET_FLOORS_MIN * PERSON_STOREY
+        : 3;
+    if (height < minH) height = lo + steps * PERSON_STOREY;
+    if (height > 36) height = Math.max(minH, lo - steps * PERSON_STOREY);
+    height = Math.min(36, Math.max(minH, height));
+  } else {
+    const t = (1 + (h % 5)) / 6;
+    height = lo + span * t;
+  }
+  return Math.min(36, Math.max(3, height));
+}
+
+function boxGap(a, b) {
+  const dx = Math.max(0, Math.max(a.minX, b.minX) - Math.min(a.maxX, b.maxX));
+  const dz = Math.max(0, Math.max(a.minZ, b.minZ) - Math.min(a.maxZ, b.maxZ));
+  return Math.hypot(dx, dz);
+}
+
+// Untagged neighbours that would share a roof move by the smallest storey
+// step that separates them. Height tags and level tags stay where they are.
+export function staggerMatchedHeights(buildings) {
+  const cell = 32;
+  const gap = 18;
+  const grid = new Map();
+  const boxes = [];
+  for (let i = 0; i < buildings.length; i++) {
+    const building = buildings[i];
+    if (!building?.points || building.points.length < 3) continue;
+    const box = footprintBounds(building.points);
+    const item = { ...box, building, i };
+    boxes.push(item);
+    coverGrid(grid, cell, box, item);
+  }
+  const near = (item) => {
+    const out = [];
+    const seen = new Set();
+    const x0 = Math.floor((item.minX - gap) / cell);
+    const x1 = Math.floor((item.maxX + gap) / cell);
+    const z0 = Math.floor((item.minZ - gap) / cell);
+    const z1 = Math.floor((item.maxZ + gap) / cell);
+    for (let x = x0; x <= x1; x++)
+      for (let z = z0; z <= z1; z++) {
+        const list = grid.get(`${x}:${z}`);
+        if (!list) continue;
+        for (const other of list) {
+          if (other === item || seen.has(other)) continue;
+          seen.add(other);
+          if (boxGap(item, other) <= gap) out.push(other);
+        }
+      }
+    return out;
+  };
+  for (let pass = 0; pass < 2; pass++) {
+  for (const item of boxes) {
+    const building = item.building;
+    if (
+      building.heightSource !== "type-default" &&
+      building.heightSource !== "infill"
+    )
+      continue;
+    const storey = building.storey || PERSON_STOREY;
+    const neighbors = near(item);
+    if (!neighbors.length) continue;
+    const sameRoof = (height, other) =>
+      Math.abs((other || 0) - height) < 0.4;
+    if (!neighbors.some((other) => sameRoof(building.height, other.building.height)))
+      continue;
+    const anchor = building.height;
+    const minH = building.street
+      ? STREET_FLOORS_MIN * PERSON_STOREY
+      : Math.max(3, anchor - 3 * storey);
+    const maxH = building.street
+      ? STREET_FLOORS_MAX * PERSON_STOREY
+      : Math.min(36, anchor + 3 * storey);
+    const cx = (item.minX + item.maxX) / 2;
+    const cz = (item.minZ + item.maxZ) / 2;
+    const sign = hash2(cx, cz) & 1 ? 1 : -1;
+    let chosen = null;
+    let bestExact = Infinity;
+    let bestMag = Infinity;
+    for (let mag = 1; mag <= 6; mag++) {
+      for (const step of [sign * mag, -sign * mag]) {
+        const next = Math.min(maxH, Math.max(minH, anchor + step * storey));
+        if (Math.abs(next - anchor) < 0.4) continue;
+        const exact = neighbors.filter((other) =>
+          sameRoof(next, other.building.height),
+        ).length;
+        if (exact < bestExact || (exact === bestExact && mag < bestMag)) {
+          bestExact = exact;
+          bestMag = mag;
+          chosen = next;
+        }
+        if (exact === 0) break;
+      }
+      if (bestExact === 0) break;
+    }
+    if (bestExact > 0) {
+      for (const step of [sign * 0.5, -sign * 0.5]) {
+        const next = Math.min(maxH, Math.max(minH, anchor + step * storey));
+        if (Math.abs(next - anchor) < 0.4) continue;
+        const exact = neighbors.filter((other) =>
+          sameRoof(next, other.building.height),
+        ).length;
+        if (exact < bestExact) {
+          bestExact = exact;
+          chosen = next;
+        }
+        if (exact === 0) break;
+      }
+    }
+    const anchorMatches = neighbors.filter((other) =>
+      sameRoof(anchor, other.building.height),
+    ).length;
+    if (chosen == null || bestExact >= anchorMatches) continue;
+    building.height = chosen;
+    building.floors = Math.max(1, Math.round(chosen / storey));
+  }
+  }
+  return buildings;
 }
 
 export function makeCar(color = 0xeee6cc, rickshaw = false) {

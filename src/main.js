@@ -495,9 +495,14 @@ function renderBuildings(cx, cz) {
       bevelEnabled: false,
     });
     geo.rotateX(-Math.PI / 2);
+    const storey = b.storey || STOREY_METERS;
+    // The facade texture paints four storeys. Scale it so one of them
+    // matches this building's storey: 3 m when the survey measured it,
+    // about one person on the untagged street wall.
+    const vScale = storey * 4;
     const uv = geo.attributes.uv;
     for (let i = 0; i < uv.count; i++)
-      uv.setXY(i, uv.getX(i) / 10, uv.getY(i) / 12);
+      uv.setXY(i, uv.getX(i) / 10, uv.getY(i) / vScale);
     const look = buildingLook(b);
     const wall = plasterMats.get(look.plaster) || plasterMats.get(GLASS_PLASTER);
     const m = new THREE.Mesh(geo, [roofMat, wall]);
@@ -509,7 +514,7 @@ function renderBuildings(cx, cz) {
       (b.minZ + b.maxZ) / 2 - cz,
     );
     const floors =
-      b.floors || Math.max(1, Math.round(b.height / STOREY_METERS));
+      b.floors || Math.max(1, Math.round(b.height / storey));
     if (isShopFront(b) && dist < 160 && shopBands < 40 && b.height > 3.2) {
       shopBands++;
       const bandShape = new THREE.Shape();
@@ -530,8 +535,8 @@ function renderBuildings(cx, cz) {
     if (dist < 130 && banded < 48 && floors > 1) {
       banded++;
       const pts = b.points;
-      for (let f = 1; f < floors && f <= 8; f++) {
-        const y = f * STOREY_METERS;
+      for (let f = 1; f < floors && f <= 14; f++) {
+        const y = f * storey;
         if (y > b.height - 0.35) break;
         for (let i = 0; i < pts.length; i++) {
           const p0 = pts[i],
