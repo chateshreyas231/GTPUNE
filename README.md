@@ -18,7 +18,8 @@ PORT=3001 npm start
 ## Play
 
 - WASD / arrow keys: drive or walk; Space: brake.
-- E: exit a stopped car, or enter when within 7 m.
+- E: exit a stopped car, or enter any car within 7 m.
+- V: switch the person on foot among the girl, the boy, and the man. The girl is the default.
 - C: cycle chase, close and overhead cameras.
 - H: horn; enable sound with the SOUND button first.
 - T: talk to a pedestrian within 22 m. Select Marathi, Hindi or English.
@@ -27,7 +28,7 @@ PORT=3001 npm start
 - P: pause. The game also pauses on a hidden tab.
 - Follow the three amber markers to complete the evening run. Return to Deccan resets your vehicle position.
 
-Traffic follows road segments and yields near the player. Buildings, pedestrians and cars block movement. NPCs are fictional people, with a skinned reference character, procedural residents and simpler family figures; dialogue is authored text. Speech uses nine bundled Marathi, Hindi and Indian English neural clips; no installed voice is required. These are synthetic performances, not local actor recordings. Engine and horn sounds are synthesized. See [asset provenance](docs/ASSETS.md).
+Traffic follows road segments and yields near the player. Buildings, pedestrians and cars block movement. The player is a clothed girl, boy, or man from CC0 character meshes. Other residents are fictional procedural people. Dialogue is authored text. A person who dies leaves blood on that spot. Speech uses nine bundled Marathi, Hindi and Indian English neural clips; no installed voice is required. These are synthetic performances, not local actor recordings. Engine and horn sounds are synthesized. See [asset provenance](docs/ASSETS.md).
 
 ## Real Pune map data
 

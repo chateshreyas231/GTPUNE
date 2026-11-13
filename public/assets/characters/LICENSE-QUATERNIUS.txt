@@ -1,0 +1,15 @@
+Quaternius character meshes
+https://quaternius.com/packs/ultimatemodularwomen.html
+https://quaternius.com/packs/ultimatemodularcharacters.html
+
+girl.glb — Ultimate Modular Women, Casual outfit. Default player, scaled to 1.62 m.
+boy.glb — Ultimate Modular Characters, Casual Hoodie. Scaled to 1.50 m.
+man.glb — Ultimate Modular Characters, Casual 2. Scaled to 1.76 m.
+
+License: CC0 1.0 Universal
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Public domain. Free to use in personal and commercial projects.
+No attribution is required by the license. This file records the source.
+The game recolors skin, hair, and clothes at runtime. It does not claim
+these stylized meshes are portraits of real people.

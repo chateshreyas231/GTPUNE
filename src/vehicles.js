@@ -40,6 +40,25 @@ export function distanceGain(distance, reach = 46) {
   return t * t;
 }
 
+export const CAR_ENTER_RANGE = 7;
+
+// The nearest car within range. Motorcycles and anything farther are ignored.
+export function nearestCar(origin, cars, range = CAR_ENTER_RANGE) {
+  const ox = Number(origin?.x) || 0;
+  const oz = Number(origin?.z) || 0;
+  let best = null;
+  for (const car of cars || []) {
+    if (car?.kind !== "car") continue;
+    const x = Number(car.x);
+    const z = Number(car.z);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) continue;
+    const distance = Math.hypot(ox - x, oz - z);
+    if (distance <= range && (!best || distance < best.distance))
+      best = { id: car.id, distance, x, z };
+  }
+  return best;
+}
+
 function builder(color) {
   const g = new THREE.Group();
   const mat = (c, rough = 0.48, metal = 0.28) =>

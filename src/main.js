@@ -1,6 +1,7 @@
 import { createDelivery, tickDelivery, interactDelivery } from "./delivery.js";
 import { streetDetails, swayCanopies, laneMarking } from "./street-details.js";
-import { loadSurfacePhotos, hydrateResidents } from "./visual-assets.js";
+import { loadSurfacePhotos, prepareLooks, applyLook } from "./visual-assets.js";
+import { cycleLook, defaultLook, lookById } from "./characters.js";
 import { lines } from "./dialogue.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -28,6 +29,7 @@ import {
   makeVehicle,
   VEHICLE_TONES,
   distanceGain,
+  nearestCar,
   BODY_LABELS,
   orbitLook,
   footLookActive,
@@ -40,6 +42,7 @@ import {
   blocksMove,
   bodyRadius,
   crashFromImpact,
+  deathStain,
   pickupWeapon,
   resumeWalking,
   strikeHit,
@@ -478,12 +481,16 @@ const spawnRoad = roadSegments.reduce((a, b) =>
     : b,
 );
 const spawnHeading = city.source === "OpenStreetMap" ? spawnRoad.angle : 0;
-const player = makeVehicle("compact-suv", 0xe5d6ae);
+let player = makeVehicle("compact-suv", 0xe5d6ae);
 player.rotation.y = spawnHeading;
 scene.add(player);
 player.position.set(city.spawn[0], 0, city.spawn[1]);
-const avatar = person(0, { player: true });
+const parkedCars = [];
+const avatar = new THREE.Group();
 avatar.userData.player = true;
+avatar.userData.look = defaultLook().id;
+avatar.userData.name = defaultLook().name;
+avatar.userData.walk = () => {};
 avatar.visible = false;
 scene.add(avatar);
 const driveSegments = splitRoadsAtJunctions(roadSegments);
@@ -800,8 +807,11 @@ function renderPlaces() {
 }
 renderPlaces();
 let detailedHumans = 0;
-hydrateResidents([avatar])
-  .then((n) => (detailedHumans = n))
+let lookId = defaultLook().id;
+prepareLooks()
+  .then(() => {
+    if (applyLook(avatar, lookId)) detailedHumans = 1;
+  })
   .catch((e) => console.warn("Human asset fallback", e));
 let job = null,
   wallet = 0;
@@ -995,27 +1005,85 @@ function reset() {
   player.rotation.y = spawnHeading;
   toast("Back in Deccan. The evening is yours.");
 }
-function toggleWalk() {
-  if (Math.abs(speed) > 1) {
-    toast("Stop the car before getting out.");
-    return;
+function carChoices() {
+  const cars = [];
+  const add = (mesh, x, z, carSpeed, carYaw, agent) => {
+    if (!mesh || mesh.userData.kind !== "car") return;
+    cars.push({
+      id: mesh.uuid,
+      kind: "car",
+      x,
+      z,
+      speed: carSpeed || 0,
+      yaw: carYaw || 0,
+      mesh,
+      agent,
+    });
+  };
+  if (walking) add(player, player.position.x, player.position.z, 0, player.rotation.y);
+  for (const mesh of parkedCars)
+    add(mesh, mesh.position.x, mesh.position.z, 0, mesh.rotation.y);
+  for (const agent of traffic) {
+    if (agent.kind !== "car") continue;
+    add(agent.mesh, agent.x, agent.z, agent.speed, agent.yaw || agent.mesh.rotation.y, agent);
   }
-  if (walking) {
-    if (avatar.position.distanceTo(player.position) > 7) {
-      toast("Walk back to your car to get in.");
+  return cars;
+}
+function takeCar(choice) {
+  const mesh = choice.mesh;
+  if (mesh !== player && !parkedCars.includes(player)) parkedCars.push(player);
+  for (let i = parkedCars.length - 1; i >= 0; i--)
+    if (parkedCars[i] === mesh) parkedCars.splice(i, 1);
+  if (choice.agent) {
+    const index = traffic.indexOf(choice.agent);
+    if (index >= 0) traffic.splice(index, 1);
+  }
+  player = mesh;
+  yaw = choice.yaw;
+  speed = choice.agent ? choice.speed : 0;
+  player.rotation.y = yaw;
+  walking = false;
+  avatar.visible = false;
+  avatar.position.y = 0;
+  vy = 0;
+  walkVel.set(0, 0, 0);
+}
+function vehicleSolids(except) {
+  const bodies = [];
+  for (const agent of traffic) {
+    if (agent.mesh === except) continue;
+    bodies.push({
+      x: agent.x,
+      z: agent.z,
+      radius: bodyRadius(agent.kind),
+    });
+  }
+  for (const mesh of parkedCars) {
+    if (mesh === except) continue;
+    bodies.push({
+      x: mesh.position.x,
+      z: mesh.position.z,
+      radius: bodyRadius(mesh.userData.kind || "car"),
+    });
+  }
+  if (player !== except)
+    bodies.push({
+      x: player.position.x,
+      z: player.position.z,
+      radius: bodyRadius(player.userData.kind || "car"),
+    });
+  return bodies;
+}
+function toggleWalk() {
+  if (!walking) {
+    if (Math.abs(speed) > 1) {
+      toast("Stop the car before getting out.");
       return;
     }
-    walking = false;
-    avatar.visible = false;
-    avatar.position.y = 0;
-    vy = 0;
-    walkVel.set(0, 0, 0);
-    yaw = player.rotation.y;
-  } else {
-    const p = player.position
+    const spot = player.position
       .clone()
       .add(new THREE.Vector3(Math.cos(yaw) * 3, 0, -Math.sin(yaw) * 3));
-    if (collides(p.x, p.z, 0.4)) {
+    if (collides(spot.x, spot.z, 0.4)) {
       toast("There is no room to exit here.");
       return;
     }
@@ -1025,20 +1093,38 @@ function toggleWalk() {
     vy = 0;
     jumpQueued = false;
     walkVel.set(0, 0, 0);
-    avatar.position.copy(p);
+    avatar.position.copy(spot);
     avatar.position.y = 0;
     avatar.rotation.y = yaw;
     avatar.visible = true;
     avatar.userData.walk?.(0, 0);
+    speed = 0;
+    toast("On foot. E enters any car within 7 metres. V changes who you are.");
+    engageLook();
+    return;
   }
-  speed = 0;
-  toast(
-    walking
-      ? "On foot. Move the mouse to look. Shift runs, Space jumps. Esc releases the pointer."
-      : "Back behind the wheel. Space brakes.",
+  const cars = carChoices();
+  const choice = nearestCar(
+    { x: avatar.position.x, z: avatar.position.z },
+    cars,
   );
-  if (walking) engageLook();
-  else releaseLook();
+  if (!choice) {
+    toast("No car within 7 metres.");
+    return;
+  }
+  takeCar(cars.find((car) => car.id === choice.id));
+  releaseLook();
+  toast(`In the ${player.userData.label || "car"}. Space brakes.`);
+}
+function switchLook() {
+  if (playerLife.dead) return;
+  lookId = cycleLook(lookId);
+  const look = lookById(lookId);
+  applyLook(avatar, lookId);
+  avatar.userData.look = look.id;
+  avatar.userData.name = look.name;
+  if (playerLife.down) layMesh(avatar);
+  toast(`${look.label}. ${look.name}.`);
 }
 function collides(x, z, r = 1.4) {
   for (const b of obstacles) {
@@ -1064,8 +1150,37 @@ function standMesh(mesh) {
   mesh.rotation.x = 0;
   mesh.position.y = 0;
 }
+const bloodMarks = [];
+function leaveBlood(x, z) {
+  const group = new THREE.Group();
+  group.name = "blood";
+  group.position.set(x, 0.25, z);
+  const blob = (rx, rz, ox, oz, color, opacity) => {
+    const mesh = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 14),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+      }),
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.scale.set(rx, rz, 1);
+    mesh.position.set(ox, 0, oz);
+    group.add(mesh);
+  };
+  blob(0.9, 0.58, 0, 0, 0x8d1c28, 0.94);
+  blob(0.42, 0.28, 0.48, 0.22, 0xb4333c, 0.86);
+  scene.add(group);
+  bloodMarks.push({ x, z, mesh: group });
+}
 function settlePerson(person, next, now) {
   if (!next?.changed) return;
+  const stain = deathStain(person, next);
+  if (stain) leaveBlood(stain.x, stain.z);
   person.health = next.health ?? 0;
   person.down = true;
   person.dead = Boolean(next.dead);
@@ -1123,6 +1238,7 @@ function takeOrSwing() {
   drop.mesh.visible = false;
   if (heldMesh) avatar.remove(heldMesh);
   heldMesh = makeStreetWeapon(drop.id);
+  heldMesh.userData.attachment = true;
   heldMesh.position.set(0.34, 1.02, 0.12);
   heldMesh.rotation.y = 0.6;
   avatar.add(heldMesh);
@@ -1200,6 +1316,7 @@ function action(key) {
   }
   if (paused || !active) return;
   if (key === "e" && !playerLife.dead) toggleWalk();
+  if (key === "v") switchLook();
   if (key === "f") {
     if (job && ["pickup", "delivery"].includes(job.phase)) interactJob();
     else takeOrSwing();
@@ -1241,7 +1358,7 @@ $("play").onclick = () => {
   document.body.classList.add("playing");
   $("play").blur();
   $("world").focus();
-  toast("WASD drives · mouse looks on foot · E walks · Shift runs · Space jumps");
+  toast("WASD drives · E enters a nearby car · V switches girl, boy, man");
 };
 function releaseLook() {
   if (document.pointerLockElement) document.exitPointerLock();
@@ -1575,6 +1692,17 @@ function drawMap() {
       map.restore();
     }
   }
+  for (const mesh of parkedCars) {
+    const x = mesh.position.x;
+    const z = mesh.position.z;
+    if (!visible(x, z)) continue;
+    map.save();
+    map.translate(sx(x), sy(z));
+    map.rotate(-mesh.rotation.y);
+    map.fillStyle = "#f4f7f2";
+    map.fillRect(-3.5, -2, 7, 4);
+    map.restore();
+  }
   if (walking) {
     map.save();
     map.translate(sx(player.position.x), sy(player.position.z));
@@ -1703,11 +1831,7 @@ function animate() {
         !mobile ||
         collides(nx, nz, 0.4) ||
         blocksMove(nx, nz, 0.45, [
-          ...traffic.map((t) => ({
-            x: t.x,
-            z: t.z,
-            radius: bodyRadius(t.kind),
-          })),
+          ...vehicleSolids(null),
           ...pedestrians.map((ped) => ({ x: ped.x, z: ped.z, radius: 0.45 })),
         ]);
       if (!blocked) {
@@ -1749,7 +1873,7 @@ function animate() {
         nx,
         nz,
         bodyRadius("player-car"),
-        traffic.map((t) => ({ x: t.x, z: t.z, radius: bodyRadius(t.kind) })),
+        vehicleSolids(player),
       );
       const victim = pedestrians.find(
         (t) =>
@@ -1808,16 +1932,10 @@ function animate() {
         Math.hypot(probe.x - avatar.position.x, probe.z - avatar.position.z) <
           radius + 0.45;
       const blocked = blocksMove(probe.x, probe.z, radius, [
-        ...traffic
-          .filter((other) => other !== agent)
-          .map((other) => ({
-            x: other.x,
-            z: other.z,
-            radius: bodyRadius(other.kind),
-          })),
-        walking
-          ? { x: avatar.position.x, z: avatar.position.z, radius: 0.45 }
-          : { x: player.position.x, z: player.position.z, radius: bodyRadius("player-car") },
+        ...vehicleSolids(agent.mesh),
+        ...(walking
+          ? [{ x: avatar.position.x, z: avatar.position.z, radius: 0.45 }]
+          : []),
       ]);
       if (victim && !victim.down) {
         const dx = probe.x - agent.x,
@@ -1883,11 +2001,7 @@ function animate() {
       }
       if (ped.points) {
         const probe = advanceAlong(ped, dt);
-        const bodies = traffic.map((t) => ({
-          x: t.x,
-          z: t.z,
-          radius: bodyRadius(t.kind),
-        }));
+        const bodies = vehicleSolids(null);
         for (const other of pedestrians) {
           if (other !== ped) bodies.push({ x: other.x, z: other.z, radius: 0.45 });
         }
@@ -2023,12 +2137,13 @@ function animate() {
     $("speed-bar").style.width =
       Math.min(100, (Math.abs(speed) / 38) * 100) + "%";
     $("gear").textContent = speed < -0.2 ? "R" : speed > 0.2 ? "D" : "N";
+    const who = lookById(lookId).label.toUpperCase();
     $("mode").textContent = walking
       ? playerLife.down
-        ? "ON FOOT / DOWN"
+        ? `${who} · DOWN`
         : keys.has("shift")
-          ? "ON FOOT / RUN"
-          : "ON FOOT / WALK"
+          ? `${who} · RUN`
+          : `${who} · WALK`
       : player.userData.label || "COMPACT SUV";
     const nearest = city.stops.reduce((a, b) =>
       Math.hypot(p.x - a.point[0], p.z - a.point[1]) <
@@ -2093,6 +2208,10 @@ window.__pune = {
       playerDown: playerLife.down,
       playerDead: playerLife.dead,
       playerHealth: playerLife.health,
+      look: lookId,
+      lookName: lookById(lookId).name,
+      lookLabel: lookById(lookId).label,
+      blood: bloodMarks.map((mark) => ({ x: mark.x, z: mark.z })),
       held: heldWeapon?.id || null,
       downPeople: pedestrians.filter((ped) => ped.down).length,
       deadPeople: pedestrians.filter((ped) => ped.dead).length,
@@ -2155,6 +2274,7 @@ window.__pune = {
       heldWeapon = pickupWeapon(id);
       if (heldMesh) avatar.remove(heldMesh);
       heldMesh = makeStreetWeapon(id);
+      heldMesh.userData.attachment = true;
       heldMesh.position.set(0.34, 1.02, 0.12);
       avatar.add(heldMesh);
       const drop = weaponDrops.find((item) => item.id === id);
@@ -2173,6 +2293,58 @@ window.__pune = {
       lookYaw = Math.atan2(-(ped.x - avatar.position.x), -(ped.z - avatar.position.z));
       lookPitch = 0.42;
       return true;
+    },
+    body() {
+      let skinned = 0;
+      const paints = [];
+      avatar.updateMatrixWorld(true);
+      avatar.traverse((object) => {
+        if (object.isSkinnedMesh) skinned += 1;
+        if (!object.isMesh || !object.material) return;
+        const materials = Array.isArray(object.material)
+          ? object.material
+          : [object.material];
+        for (const material of materials)
+          paints.push(`${material.name}:${material.color?.getHexString?.() || ""}`);
+      });
+      const size = new THREE.Box3().setFromObject(avatar).getSize(new THREE.Vector3());
+      return { skinned, paints, height: size.y, look: lookId, name: avatar.userData.name };
+    },
+    cars() {
+      return carChoices().map((car) => ({
+        x: car.x,
+        z: car.z,
+        label: car.mesh.userData.label,
+        speed: car.speed,
+        owned: car.mesh === player,
+      }));
+    },
+    aim(yaw, pitch) {
+      lookYaw = yaw;
+      lookPitch = pitch;
+      return { lookYaw, lookPitch };
+    },
+    stand(x, z) {
+      walking = true;
+      avatar.visible = true;
+      playerLife.down = false;
+      playerLife.dead = false;
+      standMesh(avatar);
+      avatar.position.set(x, 0, z);
+      return { x, z, walking };
+    },
+    moveBody(name, x, z) {
+      const ped = pedestrians.find((person) => person.mesh.userData.name === name);
+      if (!ped) return null;
+      ped.x = x;
+      ped.z = z;
+      ped.mesh.position.x = x;
+      ped.mesh.position.z = z;
+      return {
+        x: ped.mesh.position.x,
+        z: ped.mesh.position.z,
+        blood: bloodMarks.map((mark) => ({ x: mark.x, z: mark.z })),
+      };
     },
     swingFront() {
       const ped = pedestrians.find((person) => !person.down);

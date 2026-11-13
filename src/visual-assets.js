@@ -1,7 +1,10 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
-import { stepGait } from "./city.js";
+import { PLAYER_LOOKS, lookById } from "./characters.js";
+
+const lookCache = new Map();
+
 export async function loadSurfacePhotos() {
   const loader = new THREE.TextureLoader();
   const result = {};
@@ -21,170 +24,109 @@ export async function loadSurfacePhotos() {
   }
   return result;
 }
-export async function hydrateResidents(roots) {
-  const gltf = await new GLTFLoader().loadAsync(
-    "/assets/characters/michelle.glb",
+
+export async function prepareLooks() {
+  const loader = new GLTFLoader();
+  await Promise.all(
+    PLAYER_LOOKS.map(async (look) => {
+      const gltf = await loader.loadAsync(look.file);
+      lookCache.set(look.id, gltf);
+    }),
   );
-  for (const root of roots) {
-    const model = clone(gltf.scene);
-    const mixer = new THREE.AnimationMixer(model),
-      pose = gltf.animations.find((c) => c.name === "TPose");
-    if (pose) {
-      mixer.clipAction(pose).play();
-      mixer.update(0.001);
-    }
-    model.updateMatrixWorld(true);
-    model.traverse((o) => {
-      if (o.isSkinnedMesh) {
-        o.skeleton.update();
-        o.computeBoundingBox();
-      }
-    });
-    const bounds = new THREE.Box3().setFromObject(model),
-      height = bounds.max.y - bounds.min.y;
-    const normalized = new THREE.Group();
-    // This rig faces +Z. The walker faces -Z, the same way the car and the
-    // procedural body move, so turn the mesh around before it is scaled.
-    model.rotation.y = Math.PI;
-    normalized.add(model);
-    normalized.scale.setScalar(1.72 / height);
-    normalized.position.y = -bounds.min.y * normalized.scale.x;
-    const joints = {};
-    model.traverse((o) => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-      }
-      if (o.isBone) {
-        const name = o.name.replace(/[^a-z]/gi, "");
-        for (const key of [
-          "LeftArm",
-          "RightArm",
-          "LeftUpLeg",
-          "RightUpLeg",
-          "LeftLeg",
-          "RightLeg",
-          "Head",
-        ])
-          if (name.endsWith(key))
-            joints[key] = { bone: o, rest: o.quaternion.clone() };
-      }
-    });
-    for (const child of [...root.children]) {
-      child.traverse((o) => {
-        if (o.isMesh) {
-          o.geometry.dispose();
-          if (!Array.isArray(o.material)) o.material.dispose();
-        }
-      });
-      root.remove(child);
-    }
-    root.add(normalized);
-    root.userData.height = 1.72;
-    root.userData.detailedHuman = true;
-    if (root.userData.player) {
-      try {
-        dressPuneri(model);
-      } catch (error) {
-        console.warn("Player look fallback", error);
-      }
-    }
-    root.userData.walk = (dt = 0, speed = 0) => {
-      const { swing, hip, arm, knee } = stepGait(root.userData, dt, speed);
-      for (const [name, { bone, rest }] of Object.entries(joints)) {
-        bone.quaternion.copy(rest);
-        const left = name.startsWith("Left");
-        // Bind pose is a T. Local +X drops the arm to the side. The same
-        // local Z on both arms swings them opposite ways along facing,
-        // because the right arm's axis is mirrored. +Z on the left arm
-        // is backward, so a positive swing (left leg forward) sends the
-        // left arm back and the right arm forward.
-        if (name.endsWith("Arm")) {
-          bone.rotateX(Math.PI / 2);
-          bone.rotateZ(swing * arm);
-        }
-        if (name.endsWith("UpLeg")) bone.rotateX((left ? -swing : swing) * hip);
-        if (name === "LeftLeg" || name === "RightLeg") {
-          const forward = left ? Math.max(0, swing) : Math.max(0, -swing);
-          bone.rotateX(forward * knee);
-        }
-      }
-    };
-    root.userData.walk(0, 0);
-  }
-  return roots.length;
+  return lookCache.size;
 }
 
-function dressPuneri(model) {
+function paintLook(model, look) {
   model.traverse((object) => {
     if (!object.isMesh) return;
+    object.castShadow = true;
+    object.receiveShadow = true;
+    if (object.isSkinnedMesh) object.frustumCulled = false;
     const source = Array.isArray(object.material)
       ? object.material
       : [object.material];
-    const dressed = source.map((material) => {
+    const painted = source.map((material) => {
       const next = material.clone();
-      if (next.map?.image) next.map = recolorPuneri(next.map);
+      const hex = look.materials?.[next.name];
+      if (hex != null) next.color.setHex(hex);
       next.metalness = 0.02;
-      next.roughness = 0.78;
-      next.metalnessMap = null;
+      next.roughness = 0.82;
       return next;
     });
-    object.material = Array.isArray(object.material) ? dressed : dressed[0];
+    object.material = Array.isArray(object.material) ? painted : painted[0];
   });
 }
 
-// Light-medium wheatish skin, a light shirt, dark hair and trousers left dark.
-function recolorPuneri(source) {
-  const image = source.image;
-  const canvas = document.createElement("canvas");
-  canvas.width = image.width;
-  canvas.height = image.height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  context.drawImage(image, 0, 0);
-  const frame = context.getImageData(0, 0, canvas.width, canvas.height);
-  const px = frame.data;
-  const clamp = (value) => Math.max(0, Math.min(255, Math.round(value)));
-  for (let i = 0; i < px.length; i += 4) {
-    const r = px[i],
-      g = px[i + 1],
-      b = px[i + 2];
-    if (r > 180 && g > 150 && b < 140 && r > b + 40) {
-      const shade = Math.max(
-        0.55,
-        Math.min(1.15, (0.299 * r + 0.587 * g + 0.114 * b) / 255 / 0.82),
-      );
-      px[i] = clamp(228 * shade);
-      px[i + 1] = clamp(220 * shade);
-      px[i + 2] = clamp(206 * shade);
-    } else if (
-      r > g &&
-      g > b &&
-      r - b > 28 &&
-      r > 35 &&
-      r < 200 &&
-      g < 155 &&
-      b < 120
-    ) {
-      const shade = Math.max(
-        0.55,
-        Math.min(1.15, (0.299 * r + 0.587 * g + 0.114 * b) / 78),
-      );
-      px[i] = clamp(214 * shade);
-      px[i + 1] = clamp(176 * shade);
-      px[i + 2] = clamp(138 * shade);
-    } else if (r > 145 && g < 110 && b < 110 && r > g + 35 && r > b + 35) {
-      px[i] = 176;
-      px[i + 1] = 154;
-      px[i + 2] = 132;
-    }
+function disposeObject(object) {
+  object.traverse((child) => {
+    if (!child.isMesh) return;
+    child.geometry?.dispose();
+    const materials = Array.isArray(child.material)
+      ? child.material
+      : [child.material];
+    for (const material of materials) material?.dispose();
+  });
+}
+
+export function applyLook(root, id) {
+  const look = lookById(id);
+  const gltf = lookCache.get(look.id);
+  if (!gltf) return false;
+  const model = clone(gltf.scene);
+  model.traverse((object) => {
+    if (object.isSkinnedMesh) object.skeleton.update();
+  });
+  paintLook(model, look);
+  model.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(model);
+  const height = bounds.max.y - bounds.min.y;
+  const fitted = new THREE.Group();
+  fitted.name = "player-look";
+  // These rigs face +Z. Walking and driving face -Z.
+  model.rotation.y = Math.PI;
+  fitted.add(model);
+  if (height > 0.2) {
+    fitted.scale.setScalar(look.height / height);
+    fitted.position.y = -bounds.min.y * fitted.scale.x;
   }
-  context.putImageData(frame, 0, 0);
-  const map = new THREE.CanvasTexture(canvas);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.flipY = source.flipY;
-  map.wrapS = source.wrapS;
-  map.wrapT = source.wrapT;
-  map.anisotropy = source.anisotropy || 4;
-  map.needsUpdate = true;
-  return map;
+  for (const child of [...root.children]) {
+    if (child.userData?.attachment) continue;
+    disposeObject(child);
+    root.remove(child);
+  }
+  root.add(fitted);
+  const mixer = new THREE.AnimationMixer(fitted);
+  const actions = {};
+  for (const clip of gltf.animations) {
+    if (!["Idle", "Walk", "Run"].includes(clip.name)) continue;
+    const action = mixer.clipAction(clip, fitted);
+    action.enabled = true;
+    actions[clip.name] = action;
+  }
+  root.userData.mixer = mixer;
+  root.userData.actions = actions;
+  root.userData.clip = "";
+  root.userData.look = look.id;
+  root.userData.name = look.name;
+  root.userData.height = look.height;
+  root.userData.detailedHuman = true;
+  root.userData.walk = (dt = 0, speed = 0) => {
+    const meters = Math.abs(Number(speed) || 0);
+    const clip = meters > 3.2 ? "Run" : meters > 0.25 ? "Walk" : "Idle";
+    const next = actions[clip];
+    if (next && root.userData.clip !== clip) {
+      next.reset().fadeIn(0.12).play();
+      const previous = actions[root.userData.clip];
+      if (previous) previous.fadeOut(0.12);
+      root.userData.clip = clip;
+    }
+    const playing = actions[root.userData.clip];
+    if (playing) {
+      playing.timeScale =
+        clip === "Run" ? Math.max(0.85, meters / 4.5) : clip === "Walk" ? Math.max(0.8, meters / 1.4) : 1;
+    }
+    mixer.update(Math.max(0, dt));
+  };
+  root.userData.walk(0, 0);
+  return true;
 }

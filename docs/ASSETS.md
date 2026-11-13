@@ -4,11 +4,19 @@
 
 `public/assets/materials/asphalt.jpg` and `plaster.jpg` are the 1K diffuse textures for Poly Haven's `asphalt_02` and `concrete_wall_006`. Poly Haven publishes its assets under CC0: https://polyhaven.com/license. Facade windows are original procedural overlays on the plaster material. These textures are general materials and do not reproduce a particular FC Road facade.
 
-## Animated resident reference
+## Playable girl, boy, and man
 
-`public/assets/characters/michelle.glb` comes from the Three.js example assets at https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf. The Michelle character is a Mixamo reference model. Adobe's FAQ permits royalty-free character/animation use in video games: https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html. It is included as part of this game, not offered as a standalone asset library. Retain the source/provenance when distributing the game and consult Adobe's terms for other uses.
+The player starts as Ananya, a girl in a light shirt, dark trousers, and short dark hair. V cycles to Kabir, a shorter boy in a hoodie and jeans, then Nikhil, a taller man in a light shirt and dark trousers, then back. Skin tones are wheatish. These are clothed rigs with walk, run, and idle clips, not stacks of primitive shapes.
 
-This is a stylized rigged reference civilian, not a photorealistic Maharashtrian person. The runtime normalizes its scale after posing and generates a simple walking cycle. Other residents and smaller family figures use original procedural geometry. They need higher-quality character art and animation to reach the requested realism.
+| File | Body | Height | Pack |
+| --- | --- | --- | --- |
+| `public/assets/characters/girl.glb` | Girl, default | 1.62 m | Ultimate Modular Women, Casual |
+| `public/assets/characters/boy.glb` | Boy | 1.50 m | Ultimate Modular Characters, Casual Hoodie |
+| `public/assets/characters/man.glb` | Man | 1.76 m | Ultimate Modular Characters, Casual 2 |
+
+Quaternius publishes both packs under CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/. Pack pages: https://quaternius.com/packs/ultimatemodularwomen.html and https://quaternius.com/packs/ultimatemodularcharacters.html. The game recolors skin, hair, and clothes at runtime. The boy mesh is the casual hoodie male scaled to 1.50 m so he stands shorter than the girl and the man. A copy of the license note is in `public/assets/characters/LICENSE-QUATERNIUS.txt`.
+
+`public/assets/characters/michelle.glb` remains in the tree from an earlier Mixamo reference and is not used for the player. Adobe's Mixamo FAQ permits royalty-free character use in a shipped game: https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html. Other residents still use original procedural geometry.
 
 ## Voices
 
