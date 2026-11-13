@@ -12,8 +12,9 @@
     <header>
       <a class="brand" href="#">PUNE<span>AFTER HOURS</span></a>
       <div class="location">
-        <i></i><span id="district">DECCAN GYMKHANA</span
-        ><small>18.5167° N &nbsp; 73.8410° E</small>
+        <i></i><span id="district">DECCAN GYMKHANA</span>
+        <small id="coords">18.5167° N &nbsp; 73.8410° E</small>
+        <small id="nearby"></small>
       </div>
       <button id="help" aria-label="Show controls">
         ? <span>CONTROLS</span>
@@ -56,6 +57,7 @@
             <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
             <button id="map-min" type="button">MIN</button>
             <button id="map-size" type="button">EXPAND</button>
+            <button id="map-recenter" type="button" hidden>RECENTER</button>
           </span>
         </div>
         <canvas
@@ -73,7 +75,10 @@
         </div>
         <div class="map-legend">
           <span><i class="you"></i> You</span>
-          <span><i class="car"></i> Traffic</span>
+          <span><i class="car"></i> Car</span>
+          <span><i class="auto"></i> Auto</span>
+          <span><i class="bus"></i> Bus</span>
+          <span><i class="bike"></i> Bike</span>
           <span><i class="person"></i> People</span>
           <span><i class="place"></i> Places</span>
         </div>
@@ -121,10 +126,11 @@
       <h2>Make yourself at home.</h2>
       <p>
         WASD or arrow keys to drive or walk. Space brakes. E gets out of the car
-        when stopped; return nearby to get in. C changes the camera. H honks. T
-        speaks with a nearby pedestrian. P pauses. The map can be minimized or
-        expanded, and its checkboxes hide roads, buildings, traffic, people, or
-        places.
+        when stopped; return nearby to get in. F continues a delivery. C changes
+        the camera. H honks. T speaks with a nearby pedestrian. P pauses. The
+        map can be minimized, expanded, and zoomed. Checkboxes hide roads,
+        buildings, traffic, people, or places. The header names the road under
+        you, and the map labels roads, shops, people, and buses.
       </p>
       <p>
         Visit the three amber markers on your evening run. Use “Return to
