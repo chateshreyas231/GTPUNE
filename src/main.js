@@ -800,7 +800,7 @@ function renderPlaces() {
 }
 renderPlaces();
 let detailedHumans = 0;
-hydrateResidents([avatar])
+hydrateResidents([avatar, ...pedestrians.map((ped) => ped.mesh)])
   .then((n) => (detailedHumans = n))
   .catch((e) => console.warn("Human asset fallback", e));
 let job = null,

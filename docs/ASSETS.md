@@ -4,11 +4,26 @@
 
 `public/assets/materials/asphalt.jpg` and `plaster.jpg` are the 1K diffuse textures for Poly Haven's `asphalt_02` and `concrete_wall_006`. Poly Haven publishes its assets under CC0: https://polyhaven.com/license. Facade windows are original procedural overlays on the plaster material. These textures are general materials and do not reproduce a particular FC Road facade.
 
-## Animated resident reference
+## Characters
 
-`public/assets/characters/michelle.glb` comes from the Three.js example assets at https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf. The Michelle character is a Mixamo reference model. Adobe's FAQ permits royalty-free character/animation use in video games: https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html. It is included as part of this game, not offered as a standalone asset library. Retain the source/provenance when distributing the game and consult Adobe's terms for other uses.
+The player and the pedestrians use six rigged characters:
 
-This is a stylized rigged reference civilian, not a photorealistic Maharashtrian person. The runtime normalizes its scale after posing and generates a simple walking cycle. Other residents and smaller family figures use original procedural geometry. They need higher-quality character art and animation to reach the requested realism.
+- `public/assets/characters/casual-male.glb`
+- `public/assets/characters/casual-female.glb`
+- `public/assets/characters/worker-male.glb`
+- `public/assets/characters/worker-female.glb`
+- `public/assets/characters/older-male.glb`
+- `public/assets/characters/older-female.glb`
+
+Source: Quaternius, Ultimate Animated Character Pack (November 2019), Casual / Worker / Old Classy male and female. https://quaternius.com/packs/ultimatedanimatedcharacter.html
+
+License: CC0 1.0 Universal (public domain). https://creativecommons.org/publicdomain/zero/1.0/
+
+Quaternius publishes that pack as free for personal and commercial projects. CC0 allows the meshes, including the walk and run clips, to be shipped inside this game. No attribution is required; the credit above is recorded so the source stays attached to the files. These files are part of the game, not a standalone asset library.
+
+The glTF binaries are the CC0 conversions published at https://github.com/Yametech12/ghostname-3d-assets (`Casual_Male`, `Casual_Female`, `Worker_Male`, `Worker_Female`, `OldClassy_Male`, `OldClassy_Female`). That conversion has no texture atlas, so the game tints Skin, Face, Hair, Shirt and Pants to each resident's palette. Belts, vests, hats and small details keep their converted colors. Students use the casual bodies, shop workers use the worker bodies, and older neighbours use the Old Classy bodies. The player uses the casual man.
+
+The Walk and Run clips face +Z, swing the opposite arm and leg, and shift the head and torso laterally over the standing foot. The runtime turns each mesh to face -Z, scales it to the resident's height, and plays Idle, Walk or Run from travel speed. A stopped person stands. This is stylized low-poly art, not a photorealistic Maharashtrian person. The stacked procedural body remains only as a fallback if a mesh fails to load.
 
 ## Voices
 

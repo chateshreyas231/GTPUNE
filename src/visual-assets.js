@@ -1,7 +1,37 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
-import { stepGait } from "./city.js";
+
+// Quaternius Ultimate Animated Character Pack, CC0. See README and docs/ASSETS.md.
+export const CHARACTER_CAST = [
+  { id: "casual-male", file: "casual-male.glb", gender: "man", kind: "student" },
+  { id: "casual-female", file: "casual-female.glb", gender: "woman", kind: "student" },
+  { id: "worker-male", file: "worker-male.glb", gender: "man", kind: "shop" },
+  { id: "worker-female", file: "worker-female.glb", gender: "woman", kind: "shop" },
+  { id: "older-male", file: "older-male.glb", gender: "man", kind: "older" },
+  { id: "older-female", file: "older-female.glb", gender: "woman", kind: "older" },
+];
+
+const MATERIAL_SLOTS = {
+  Skin: "skin",
+  Face: "skin",
+  Hair: "hair",
+  Shirt: "top",
+  Pants: "bottom",
+};
+
+export function characterFor(root) {
+  const role = root.userData.role;
+  if (!role) return CHARACTER_CAST[0];
+  return (
+    CHARACTER_CAST.find(
+      (cast) => cast.gender === role.gender && cast.kind === role.kind,
+    ) ||
+    CHARACTER_CAST.find((cast) => cast.gender === role.gender) ||
+    CHARACTER_CAST[0]
+  );
+}
+
 export async function loadSurfacePhotos() {
   const loader = new THREE.TextureLoader();
   const result = {};
@@ -21,101 +51,34 @@ export async function loadSurfacePhotos() {
   }
   return result;
 }
+
 export async function hydrateResidents(roots) {
-  const gltf = await new GLTFLoader().loadAsync(
-    "/assets/characters/michelle.glb",
-  );
-  for (const root of roots) {
-    const model = clone(gltf.scene);
-    const mixer = new THREE.AnimationMixer(model),
-      pose = gltf.animations.find((c) => c.name === "TPose");
-    if (pose) {
-      mixer.clipAction(pose).play();
-      mixer.update(0.001);
-    }
-    model.updateMatrixWorld(true);
-    model.traverse((o) => {
-      if (o.isSkinnedMesh) {
-        o.skeleton.update();
-        o.computeBoundingBox();
-      }
-    });
-    const bounds = new THREE.Box3().setFromObject(model),
-      height = bounds.max.y - bounds.min.y;
-    const normalized = new THREE.Group();
-    // This rig faces +Z. The walker faces -Z, the same way the car and the
-    // procedural body move, so turn the mesh around before it is scaled.
-    model.rotation.y = Math.PI;
-    normalized.add(model);
-    normalized.scale.setScalar(1.72 / height);
-    normalized.position.y = -bounds.min.y * normalized.scale.x;
-    const joints = {};
-    model.traverse((o) => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-      }
-      if (o.isBone) {
-        const name = o.name.replace(/[^a-z]/gi, "");
-        for (const key of [
-          "LeftArm",
-          "RightArm",
-          "LeftUpLeg",
-          "RightUpLeg",
-          "LeftLeg",
-          "RightLeg",
-          "Head",
-        ])
-          if (name.endsWith(key))
-            joints[key] = { bone: o, rest: o.quaternion.clone() };
-      }
-    });
-    for (const child of [...root.children]) {
-      child.traverse((o) => {
-        if (o.isMesh) {
-          o.geometry.dispose();
-          if (!Array.isArray(o.material)) o.material.dispose();
-        }
-      });
-      root.remove(child);
-    }
-    root.add(normalized);
-    root.userData.height = 1.72;
-    root.userData.detailedHuman = true;
-    if (root.userData.player) {
+  const loader = new GLTFLoader();
+  const loaded = new Map();
+  await Promise.all(
+    CHARACTER_CAST.map(async (cast) => {
       try {
-        dressPuneri(model);
+        loaded.set(cast.id, await loader.loadAsync(`/assets/characters/${cast.file}`));
       } catch (error) {
-        console.warn("Player look fallback", error);
+        console.warn("Character fallback", cast.file, error);
       }
+    }),
+  );
+  let count = 0;
+  for (const root of roots) {
+    const gltf = loaded.get(characterFor(root).id);
+    if (!gltf) continue;
+    try {
+      mountCharacter(root, gltf);
+      count++;
+    } catch (error) {
+      console.warn("Character fallback", error);
     }
-    root.userData.walk = (dt = 0, speed = 0) => {
-      const { swing, hip, arm, knee } = stepGait(root.userData, dt, speed);
-      for (const [name, { bone, rest }] of Object.entries(joints)) {
-        bone.quaternion.copy(rest);
-        const left = name.startsWith("Left");
-        // Bind pose is a T. Local +X drops the arm to the side. The same
-        // local Z on both arms swings them opposite ways along facing,
-        // because the right arm's axis is mirrored. +Z on the left arm
-        // is backward, so a positive swing (left leg forward) sends the
-        // left arm back and the right arm forward.
-        if (name.endsWith("Arm")) {
-          bone.rotateX(Math.PI / 2);
-          bone.rotateZ(swing * arm);
-        }
-        if (name.endsWith("UpLeg")) bone.rotateX((left ? -swing : swing) * hip);
-        if (name === "LeftLeg" || name === "RightLeg") {
-          const forward = left ? Math.max(0, swing) : Math.max(0, -swing);
-          bone.rotateX(forward * knee);
-        }
-      }
-    };
-    root.userData.walk(0, 0);
   }
-  return roots.length;
+  return count;
 }
 
-function dressPuneri(model) {
+function tintCharacter(model, palette) {
   model.traverse((object) => {
     if (!object.isMesh) return;
     const source = Array.isArray(object.material)
@@ -123,68 +86,142 @@ function dressPuneri(model) {
       : [object.material];
     const dressed = source.map((material) => {
       const next = material.clone();
-      if (next.map?.image) next.map = recolorPuneri(next.map);
-      next.metalness = 0.02;
+      const slot = MATERIAL_SLOTS[next.name];
+      if (slot && palette[slot] != null) next.color.set(palette[slot]);
       next.roughness = 0.78;
-      next.metalnessMap = null;
+      next.metalness = 0;
       return next;
     });
     object.material = Array.isArray(object.material) ? dressed : dressed[0];
+    object.castShadow = true;
+    object.receiveShadow = true;
+    object.frustumCulled = false;
   });
 }
 
-// Light-medium wheatish skin, a light shirt, dark hair and trousers left dark.
-function recolorPuneri(source) {
-  const image = source.image;
-  const canvas = document.createElement("canvas");
-  canvas.width = image.width;
-  canvas.height = image.height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  context.drawImage(image, 0, 0);
-  const frame = context.getImageData(0, 0, canvas.width, canvas.height);
-  const px = frame.data;
-  const clamp = (value) => Math.max(0, Math.min(255, Math.round(value)));
-  for (let i = 0; i < px.length; i += 4) {
-    const r = px[i],
-      g = px[i + 1],
-      b = px[i + 2];
-    if (r > 180 && g > 150 && b < 140 && r > b + 40) {
-      const shade = Math.max(
-        0.55,
-        Math.min(1.15, (0.299 * r + 0.587 * g + 0.114 * b) / 255 / 0.82),
-      );
-      px[i] = clamp(228 * shade);
-      px[i + 1] = clamp(220 * shade);
-      px[i + 2] = clamp(206 * shade);
-    } else if (
-      r > g &&
-      g > b &&
-      r - b > 28 &&
-      r > 35 &&
-      r < 200 &&
-      g < 155 &&
-      b < 120
-    ) {
-      const shade = Math.max(
-        0.55,
-        Math.min(1.15, (0.299 * r + 0.587 * g + 0.114 * b) / 78),
-      );
-      px[i] = clamp(214 * shade);
-      px[i + 1] = clamp(176 * shade);
-      px[i + 2] = clamp(138 * shade);
-    } else if (r > 145 && g < 110 && b < 110 && r > g + 35 && r > b + 35) {
-      px[i] = 176;
-      px[i + 1] = 154;
-      px[i + 2] = 132;
-    }
+function footSeparation(root) {
+  root.updateMatrixWorld(true);
+  const left = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  root.getObjectByName("FootL").getWorldPosition(left);
+  root.getObjectByName("FootR").getWorldPosition(right);
+  return Math.abs(left.z - right.z);
+}
+
+// A full cycle is two steps. The widest foot gap is about one step.
+function authoredSpeed(mixer, action, clip, root) {
+  action.reset().play();
+  action.setEffectiveWeight(1);
+  let maxSep = 0;
+  for (let i = 0; i < 12; i++) {
+    mixer.setTime((i / 12) * clip.duration);
+    maxSep = Math.max(maxSep, footSeparation(root));
   }
-  context.putImageData(frame, 0, 0);
-  const map = new THREE.CanvasTexture(canvas);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.flipY = source.flipY;
-  map.wrapS = source.wrapS;
-  map.wrapT = source.wrapT;
-  map.anisotropy = source.anisotropy || 4;
-  map.needsUpdate = true;
-  return map;
+  action.setEffectiveWeight(0);
+  return (maxSep * 2) / clip.duration;
+}
+
+export function mountCharacter(root, gltf) {
+  const model = clone(gltf.scene);
+  tintCharacter(model, {
+    skin: root.userData.skin ?? 0xd6b08a,
+    hair: root.userData.hair ?? 0x1b1714,
+    top: root.userData.shirt ?? 0xe4dccc,
+    bottom: root.userData.bottom ?? 0x343a42,
+  });
+  // These rigs step toward +Z. People in the city face -Z.
+  model.rotation.y = Math.PI;
+  const bounds = new THREE.Box3().setFromObject(model);
+  const height = Math.max(0.01, bounds.max.y - bounds.min.y);
+  const normalized = new THREE.Group();
+  normalized.name = "character-mesh";
+  normalized.add(model);
+  normalized.scale.setScalar(1.72 / height);
+  normalized.position.y = -bounds.min.y * normalized.scale.x;
+  for (const child of [...root.children]) {
+    child.traverse((object) => {
+      if (!object.isMesh) return;
+      object.geometry.dispose();
+      const materials = Array.isArray(object.material)
+        ? object.material
+        : [object.material];
+      for (const material of materials) material.dispose();
+    });
+    root.remove(child);
+  }
+  root.add(normalized);
+  root.updateMatrixWorld(true);
+
+  const clips = {};
+  for (const name of ["Idle", "Walk", "Run"]) {
+    const clip = gltf.animations.find((entry) => entry.name === name);
+    if (!clip) throw new Error(`Character is missing ${name}`);
+    clips[name.toLowerCase()] = clip;
+  }
+  for (const bone of ["FootL", "FootR", "FistL", "FistR", "Head"]) {
+    if (!model.getObjectByName(bone)) throw new Error(`Character is missing ${bone}`);
+  }
+  const mixer = new THREE.AnimationMixer(model);
+  const actions = {
+    idle: mixer.clipAction(clips.idle),
+    walk: mixer.clipAction(clips.walk),
+    run: mixer.clipAction(clips.run),
+  };
+  for (const action of Object.values(actions)) {
+    action.play();
+    action.setEffectiveWeight(0);
+  }
+  const authored = {
+    walk: authoredSpeed(mixer, actions.walk, clips.walk, root),
+    run: authoredSpeed(mixer, actions.run, clips.run, root),
+  };
+  actions.idle.setEffectiveWeight(1);
+  mixer.setTime(0);
+
+  let mode = "idle";
+  const fade = 0.16;
+  root.userData.detailedHuman = true;
+  root.userData.character = characterFor(root).id;
+  root.userData.mixer = mixer;
+  root.userData.actions = actions;
+  root.userData.authored = authored;
+  root.userData.gaitMode = mode;
+  // Walk and Run swing the opposite arm and leg and shift the head
+  // and torso over the standing foot. The clip speeds up with travel.
+  root.userData.walk = (dt = 0, speed = 0) => {
+    const meters = Math.abs(Number(speed) || 0);
+    const next = meters < 0.2 ? "idle" : meters < 3.2 ? "walk" : "run";
+    if (next !== mode) {
+      actions[mode].fadeOut(fade);
+      actions[next].reset().fadeIn(fade).play();
+      mode = next;
+      root.userData.gaitMode = mode;
+    }
+    if (mode !== "idle") {
+      const pace = authored[mode] || 1;
+      actions[mode].setEffectiveTimeScale(
+        Math.min(2.8, Math.max(0.75, meters / pace)),
+      );
+    }
+    mixer.update(Math.max(0, dt));
+  };
+  root.userData.pose = () => {
+    root.updateMatrixWorld(true);
+    const localZ = (name) => {
+      const point = new THREE.Vector3();
+      root.getObjectByName(name).getWorldPosition(point);
+      root.worldToLocal(point);
+      return point.z;
+    };
+    return {
+      leftLeg: localZ("FootL"),
+      rightLeg: localZ("FootR"),
+      leftArm: localZ("FistL"),
+      rightArm: localZ("FistR"),
+      leftArmZ: 0,
+      rightArmZ: 0,
+    };
+  };
+  root.userData.walk(0, 0);
+  return root;
 }

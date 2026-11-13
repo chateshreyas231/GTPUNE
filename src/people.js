@@ -80,6 +80,8 @@ export function person(index, options = {}) {
   g.userData.player = player;
   g.userData.skin = skin;
   g.userData.shirt = shirt;
+  g.userData.hair = hair;
+  g.userData.bottom = pants;
   g.userData.name = player ? "You" : role.name;
   if (role) g.userData.role = role;
   const mat = (c) =>

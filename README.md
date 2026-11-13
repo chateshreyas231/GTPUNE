@@ -27,7 +27,11 @@ PORT=3001 npm start
 - P: pause. The game also pauses on a hidden tab.
 - Follow the three amber markers to complete the evening run. Return to Deccan resets your vehicle position.
 
-Traffic follows road segments and yields near the player. Buildings, pedestrians and cars block movement. NPCs are fictional people, with a skinned reference character, procedural residents and simpler family figures; dialogue is authored text. Speech uses nine bundled Marathi, Hindi and Indian English neural clips; no installed voice is required. These are synthetic performances, not local actor recordings. Engine and horn sounds are synthesized. See [asset provenance](docs/ASSETS.md).
+Traffic follows road segments and yields near the player. Buildings, pedestrians and cars block movement. NPCs are fictional people. On foot, the player and every pedestrian use a rigged mesh: the walk and run clips swing opposite arms and legs and shift the head and torso over the standing foot. Dialogue is authored text. Speech uses nine bundled Marathi, Hindi and Indian English neural clips; no installed voice is required. These are synthetic performances, not local actor recordings. Engine and horn sounds are synthesized. See [asset provenance](docs/ASSETS.md).
+
+## Characters
+
+People on foot are rigged characters from Quaternius's [Ultimate Animated Character Pack](https://quaternius.com/packs/ultimatedanimatedcharacter.html) (November 2019): Casual, Worker, and Old Classy, each as a man and a woman. The pack is [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) (public domain). CC0 allows these meshes to be used and shipped in this game, including commercially, and does not require credit. The files live at `public/assets/characters/`. Skin, hair, shirts and trousers are tinted per resident. Belts, vests and hats keep the pack colors.
 
 ## Real Pune map data
 
@@ -61,7 +65,7 @@ Requested references:
 
 Benglooru’s public site and controls documentation were inspected after network access was restored. Its public documentation describes a stylized OSM-based map, generated local voices, driving, walking and missions. Its source code and assets have not been copied into this project. The provided YouTube links remain inaccessible through the cloud proxy.
 
-The current result is a playable prototype, not a finished GTA-scale game or photorealistic digital twin. Next fidelity steps require licensed building imagery/3D models, terrain, animated rigged residents, native actor recordings, more advanced traffic simulation and further spatial batching. The engine currently models a flat city surface and generated building exteriors; it has no interiors, combat or multiplayer.
+The current result is a playable prototype, not a finished GTA-scale game or photorealistic digital twin. Next fidelity steps require licensed building imagery/3D models, terrain, native actor recordings, more advanced traffic simulation and further spatial batching. The engine currently models a flat city surface and generated building exteriors; it has no interiors, combat or multiplayer. Residents are stylized CC0 characters, not scans of people in Pune.
 
 The selected first facade-reference target is **Goodluck Chowk toward Fergusson College**. Exact facade reconstruction awaits original overlapping video/photos or licensed reference assets. Current textures and props are illustrative; they do not establish the real colors or signs of those buildings.
 
