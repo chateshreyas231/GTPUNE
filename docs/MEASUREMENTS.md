@@ -15,7 +15,7 @@ A fetch of `https://www.mapchannels.com/routemaps3/map.htm?units=miles` returned
 | Building footprint | 19,850 outlines | Extruded on those vertices. The outline is not replaced with a box |
 | `height` | 57 buildings | That height, clamped to 3–120 m |
 | `building:levels` | 270 buildings, when `height` is absent | `levels × 3 m` |
-| Neither | 19,523 buildings | Median floors of that `building` type, times 3 m |
+| Neither | 19,523 buildings | Low types keep the median floors below, times 3 m. The street wall (`yes`, residential, retail, commercial, and kinds with no median) is 9 storeys of 2 m, then neighbours that would share a roof are offset by 2 m steps |
 
 Modal lanes among tagged ways: primary 2 (108 of 196), secondary 2 (66 of 85), tertiary 2 (57 of 76), trunk 2 (16 of 27), residential 2 (25 of 44). Untagged primary, secondary, tertiary, trunk and residential roads are therefore 7 m. A tagged 3-lane primary is 10.5 m. The one secondary `width=10` stays 10 m.
 
@@ -26,14 +26,15 @@ Median floors where a type has a height or level tag, used only when both tags a
 | Type | Median floors | Default height |
 | --- | --- | --- |
 | apartments | 5 | 15 m |
-| yes, residential, retail, school | 4 | 12 m |
-| commercial, industrial | 3 | 9 m |
+| school | 4 | 12 m |
+| industrial | 3 | 9 m |
 | house, detached | 2 | 6 m |
 | office | 5 | 15 m |
 | hospital | 7 | 21 m |
 | temple, bungalow, shed | 1 | 3 m |
+| yes, residential, retail, commercial | street wall | 18 m before neighbour offsets |
 
-`hotel` has only two tagged examples and is not used as a default. A `college` levels value of 0 is ignored; untagged colleges use 4 floors, the school median.
+A standing person is about 1.72 m. Street-wall storeys are 2 m, so the person reads as about one storey and a typical FC Road roof starts nine storeys up, several of them above the person. Neighbours that would match are shifted by the smallest 2 m step that separates them, and never below 12 m or above 28 m. A `height` tag or a `building:levels` tag is left on the surveyed metres. `hotel` has only two tagged examples and is not used as a median; an untagged hotel uses the street wall. A `college` levels value of 0 is ignored; untagged colleges use 4 floors, the school median. Infill between footprints takes a height from the two neighbouring roofs and does not collapse to one height.
 
 ## Setback from the centerline to the nearest footprint
 
@@ -64,7 +65,7 @@ Sidewalk widths are chosen so a 7 m carriageway still clears that p10 wall:
 | Shop bay | 4.5 m of frontage | Shop nodes: FC corridor 1, Deccan 0, Kothrud 0. One bay is placed per 4.5 m of a street-facing edge |
 | Tree spacing | 14 m along the kerb | The extract has 0 `natural=tree` nodes |
 | Leaf clumps | 5 per canopy, swaying | Canopy shape is not in the survey |
-| Floor-band thickness | 0.16 m tall, 0.34 m deep, one band per 3 m storey | The band marks the measured storey. The moulding size is not tagged |
+| Floor-band thickness | 0.16 m tall, 0.34 m deep, one band per storey | Surveyed masses band every 3 m. Street-wall masses band every 2 m so a person reads as one storey. The moulding size is not tagged |
 | Sign lettering | generic category words already in the scene (चहा, मिसळ, and the roadside boards) | Exact shop names are not taken from a photograph |
 
-Ground-floor shops are a shallow front and an awning on edges that sit 0.2–7.5 m outside the carriageway. Upper floors are the footprint extrusion plus those bands, up to 8 storeys, on the nearest 48 buildings. Buildings farther away keep the surveyed footprint and height without the band meshes.
+Ground-floor shops are a shallow front and an awning on edges that sit 0.2–7.5 m outside the carriageway. Upper floors are the footprint extrusion plus those bands, up to 14 storeys, on the nearest 48 buildings. Buildings farther away keep the surveyed footprint and height without the band meshes.
