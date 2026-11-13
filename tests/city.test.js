@@ -9,6 +9,11 @@ import {
   roadWidthFromTags,
   buildingSizeFromTags,
   sidewalkMeters,
+  laneLateral,
+  sidewalkLateral,
+  DRIVE_LANE_METERS,
+  BIKE_PARK_METERS,
+  PUNE_CARRIAGE_METERS,
 } from "../src/city.js";
 test("fallback city is deterministic and includes a playable route", () => {
   const a = fallbackCity();
@@ -53,26 +58,46 @@ test("OSM importer uses footprints and height and snaps spawn to roads", () => {
 });
 test("empty map cannot silently activate real-map mode", () =>
   assert.throws(() => parseOSM({ elements: [] }), /no driveable roads/));
-test("road width uses a width tag, then lanes, then the class default", () => {
+test("drivable width is one lane each way plus parked bikes", () => {
+  assert.equal(
+    PUNE_CARRIAGE_METERS,
+    DRIVE_LANE_METERS * 2 + BIKE_PARK_METERS * 2,
+  );
+  assert.ok(PUNE_CARRIAGE_METERS < 7);
   assert.deepEqual(roadWidthFromTags({ highway: "secondary", width: "10" }), {
-    width: 10,
+    width: PUNE_CARRIAGE_METERS,
     widthSource: "width-tag",
   });
   assert.deepEqual(roadWidthFromTags({ highway: "primary", lanes: "3" }), {
-    width: 10.5,
+    width: PUNE_CARRIAGE_METERS,
     widthSource: "lanes",
   });
   assert.deepEqual(roadWidthFromTags({ highway: "primary" }), {
-    width: 7,
+    width: PUNE_CARRIAGE_METERS,
     widthSource: "class-default",
   });
   assert.deepEqual(roadWidthFromTags({ highway: "living_street" }), {
     width: 5,
     widthSource: "class-default",
   });
+  assert.deepEqual(roadWidthFromTags({ highway: "residential", lanes: "1" }), {
+    width: 3.5,
+    widthSource: "lanes",
+  });
   assert.equal(sidewalkMeters("Gopal Krushna Gokhale Path"), 2.4);
   assert.equal(sidewalkMeters("Paud Road"), 2.2);
   assert.equal(sidewalkMeters("Bhandarkar Path"), 1.6);
+  const segment = { width: PUNE_CARRIAGE_METERS, sidewalk: 1.6 };
+  const right = laneLateral(segment, "car", 1);
+  const left = laneLateral(segment, "car", -1);
+  assert.ok(right > 0 && left < 0);
+  assert.ok(Math.abs(right - left) > 2.5);
+  const bike = laneLateral(segment, "motorcycle", 1);
+  assert.ok(bike > right);
+  assert.ok(bike < PUNE_CARRIAGE_METERS / 2);
+  const walk = sidewalkLateral(segment, 1);
+  assert.ok(walk > PUNE_CARRIAGE_METERS / 2);
+  assert.ok(walk < PUNE_CARRIAGE_METERS / 2 + segment.sidewalk);
 });
 test("building height prefers a height tag, then levels, then the type median", () => {
   const tagged = buildingSizeFromTags({
@@ -125,7 +150,7 @@ test("OSM footprints stay on the surveyed outline", () => {
       },
     ],
   });
-  assert.equal(map.roads[0].width, 7);
+  assert.equal(map.roads[0].width, PUNE_CARRIAGE_METERS);
   assert.equal(map.roads[0].widthSource, "lanes");
   assert.equal(map.roads[0].sidewalk, 1.6);
   assert.equal(map.buildings[0].points.length, 5);

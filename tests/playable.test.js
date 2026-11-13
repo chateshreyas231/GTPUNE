@@ -293,18 +293,51 @@ function hitsCarriageway(points, roads) {
 }
 
 test("infill closes a gap between footprints and does not cover the road", () => {
-  const roads = [{ points: [[0, -10], [0, 80]], width: 8 }];
+  const roads = [{ points: [[0, -10], [0, 80]], width: 8, sidewalk: 1.6 }];
   const west = rect(-18, 6, 8, 16, 9);
   const next = rect(-18, 28, 8, 16, 15);
   const across = rect(8, 6, 8, 16, 12);
+  const surveyed = [west, next, across].map((building) =>
+    building.points.map((point) => point.slice()),
+  );
   const infill = fillBuildingGaps([west, next, across], roads);
+  assert.deepEqual(
+    [west, next, across].map((building) => building.points),
+    surveyed,
+  );
   assert.ok(infill.length >= 1);
   assert.ok(infill.every((building) => building.infill));
   assert.ok(infill.every((building) => !hitsCarriageway(building.points, roads)));
+  const sidewalk = 8 / 2 + 1.6;
+  for (const building of infill)
+    for (const [x] of building.points) assert.ok(Math.abs(x) >= sidewalk - 0.05);
   const heights = infill.map((building) => building.height);
   assert.ok(heights.every((height) => height >= 9 && height <= 15));
   const lone = fillBuildingGaps([west], roads);
   assert.equal(lone.length, 0);
+});
+
+test("infill fills open ground up to the sidewalk at the neighbours' height", () => {
+  const width = 6;
+  const sidewalk = 1.6;
+  const roads = [{ points: [[0, -30], [0, 90]], width, sidewalk }];
+  const front = rect(-28, 8, 12, 20, 15);
+  const beside = rect(-28, 36, 12, 18, 9);
+  const original = front.points.map((point) => point.slice());
+  const infill = fillBuildingGaps([front, beside], roads);
+  assert.deepEqual(front.points, original);
+  const wall = infill.filter((building) =>
+    building.points.some(([x]) => x > -16 && x < 0),
+  );
+  assert.ok(wall.length >= 1);
+  const kerb = width / 2 + sidewalk;
+  for (const building of wall) {
+    const xs = building.points.map(([x]) => x);
+    assert.ok(Math.min(...xs) >= -16 + 0.7);
+    assert.ok(Math.max(...xs) <= -kerb + 0.05);
+    assert.ok(Math.max(...xs) > -kerb - 1.4);
+    assert.equal(building.height, 12);
+  }
 });
 
 test("a vehicle impact leaves the player alive and a hard hit can still kill a pedestrian", () => {

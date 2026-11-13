@@ -286,14 +286,20 @@ export function chooseGoal(segments, from, minDistance, rng = Math.random) {
   }
   return farthest ? farthest.point : [from[0], from[1]];
 }
+// Cars take the middle of their lane. Two-wheelers ride nearer the kerb, where
+// the carriageway keeps a strip for parked bikes. Offsets stay on the asphalt.
 export function laneLateral(segment, kind, direction) {
-  const width = segment.width || 8;
-  const meters =
-    kind === "motorcycle"
-      ? Math.min(width * 0.34, 3.6)
-      : Math.min(width * 0.18, 2.2);
-  return (direction >= 0 ? 1 : -1) * meters;
+  const half = Math.max(1.1, (segment.width || 6) / 2);
+  const park = Math.min(0.75, half * 0.28);
+  const driveOuter = Math.max(0.6, half - park);
+  const body = kind === "motorcycle" ? 0.35 : 0.85;
+  const preferred =
+    kind === "motorcycle" ? driveOuter - 0.2 : Math.max(driveOuter * 0.55, 1.3);
+  const offset = Math.min(Math.max(0.35, preferred), Math.max(0.35, half - body));
+  return (direction >= 0 ? 1 : -1) * offset;
 }
 export function sidewalkLateral(segment, side) {
-  return (side >= 0 ? 1 : -1) * ((segment.width || 8) / 2 + 1.65);
+  const half = (segment.width || 6) / 2;
+  const walk = segment.sidewalk > 0 ? segment.sidewalk : 1.6;
+  return (side >= 0 ? 1 : -1) * (half + walk * 0.5);
 }
