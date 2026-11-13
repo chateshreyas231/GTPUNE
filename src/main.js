@@ -2,6 +2,28 @@ import { createDelivery, tickDelivery, interactDelivery } from "./delivery.js";
 import { streetDetails, swayCanopies, laneMarking } from "./street-details.js";
 import { loadSurfacePhotos, hydrateResidents, prepareLooks, applyLook } from "./visual-assets.js";
 import { cycleLook, defaultLook, lookById } from "./characters.js";
+import {
+  ROAD_Y,
+  WALK_Y,
+  cornerPlans,
+  exhaustPuff,
+  makeCigarette,
+  makeConstruction,
+  makeFoodStall,
+  makePothole,
+  makeShopFront,
+  makeSmokeWisp,
+  potholeMarks,
+  ribbonPositions,
+  runsNear,
+  sellerIndex,
+  sellerPose,
+  sidewalkRibbons,
+  smogGrade,
+  smokerSlots,
+  tickWisp,
+  wallPositions,
+} from "./street-corners.js";
 import { lines } from "./dialogue.js";
 import { CINEMATIC, createCinematicComposer, thirdPersonRig } from "./cinematic.js";
 import * as THREE from "three";
@@ -135,8 +157,9 @@ try {
 }
 const surfacePhotos = await loadSurfacePhotos();
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xd4d2bc);
-scene.fog = new THREE.FogExp2(0xd4d2bc, 0.00105);
+const openingSmog = smogGrade(false);
+scene.background = new THREE.Color(openingSmog.background);
+scene.fog = new THREE.FogExp2(openingSmog.fog, openingSmog.density);
 const renderer = new THREE.WebGLRenderer({
   canvas: $("world"),
   antialias: true,
@@ -166,8 +189,8 @@ const sky = new THREE.Mesh(
     side: THREE.BackSide,
     depthWrite: false,
     uniforms: {
-      top: { value: new THREE.Color(0xf6f3e6) },
-      horizon: { value: new THREE.Color(0xcfcbb6) },
+      top: { value: new THREE.Color(openingSmog.top) },
+      horizon: { value: new THREE.Color(openingSmog.horizon) },
     },
     vertexShader: `
       varying vec3 vDir;
@@ -248,6 +271,11 @@ const mats = {
   walk: material(0xb2af92),
   mark: material(0xf4f4ee),
   edge: material(0xd6b43a),
+  kerb: new THREE.MeshStandardMaterial({
+    color: 0xc4bba6,
+    roughness: 0.92,
+    side: THREE.DoubleSide,
+  }),
   trunk: material(0x6e5c42),
 };
 function box(w, h, d, mat, x, y, z, parent = scene) {
@@ -291,37 +319,66 @@ for (const road of city.roads)
 const roadGroup = new THREE.Group();
 scene.add(roadGroup);
 function renderRoads(cx, cz) {
-  for (const mesh of [...roadGroup.children]) {
-    mesh.geometry.dispose();
-    roadGroup.remove(mesh);
+  for (const child of [...roadGroup.children]) {
+    child.traverse((object) => {
+      if (object.geometry) object.geometry.dispose();
+    });
+    roadGroup.remove(child);
+  }
+  const addRibbon = (positions, material) => {
+    if (!positions.length) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    const uv = new Float32Array((positions.length / 3) * 2);
+    for (let i = 0, v = 0; i < positions.length; i += 3, v += 2) {
+      uv[v] = positions[i] / 4;
+      uv[v + 1] = positions[i + 2] / 4;
+    }
+    geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.receiveShadow = true;
+    mesh.castShadow = material === mats.kerb;
+    roadGroup.add(mesh);
+  };
+  let pits = 0;
+  for (const road of city.roads) {
+    const width = road.width || 7;
+    const sidewalk = road.sidewalk ?? 1.6;
+    for (const pts of runsNear(road.points, cx, cz, 1000)) {
+      const ribbons = sidewalkRibbons(pts, width, sidewalk);
+      addRibbon(
+        ribbonPositions(ribbons.carriage.left, ribbons.carriage.right, ROAD_Y),
+        mats.road,
+      );
+      addRibbon(
+        ribbonPositions(ribbons.left.outer, ribbons.left.inner, WALK_Y),
+        mats.walk,
+      );
+      addRibbon(
+        ribbonPositions(ribbons.right.inner, ribbons.right.outer, WALK_Y),
+        mats.walk,
+      );
+      addRibbon(wallPositions(ribbons.left.inner, ROAD_Y, WALK_Y), mats.kerb);
+      addRibbon(wallPositions(ribbons.right.inner, ROAD_Y, WALK_Y), mats.kerb);
+      if (pits >= 18) continue;
+      for (const hole of potholeMarks(pts, width)) {
+        if (pits >= 18) break;
+        if (Math.hypot(hole.x - cx, hole.z - cz) > 240) continue;
+        const pit = makePothole(hole);
+        pit.position.set(hole.x, ROAD_Y + 0.02, hole.z);
+        pit.rotation.y = hole.yaw;
+        roadGroup.add(pit);
+        pits++;
+      }
+    }
   }
   for (const r of roadSegments) {
     if (segmentDistance(cx, cz, r.a, r.b) > 1000) continue;
     const { a, b, width, length, angle } = r,
-      sidewalk = r.sidewalk ?? 1.6,
       x = (a[0] + b[0]) / 2,
-      z = (a[1] + b[1]) / 2;
-    box(
-      width + sidewalk * 2,
-      0.2,
-      length,
-      mats.walk,
-      x,
-      0,
-      z,
-      roadGroup,
-    ).rotation.y = angle;
-    box(
-      width,
-      0.08,
-      length + 0.1,
-      mats.road,
-      x,
-      0.15,
-      z,
-      roadGroup,
-    ).rotation.y = angle;
-    const dx = (b[0] - a[0]) / length,
+      z = (a[1] + b[1]) / 2,
+      dx = (b[0] - a[0]) / length,
       dz = (b[1] - a[1]) / length,
       px = dz,
       pz = -dx,
@@ -334,7 +391,7 @@ function renderRoads(cx, cz) {
         length,
         mats.edge,
         x + px * inset * edge.side,
-        0.21,
+        ROAD_Y + 0.02,
         z + pz * inset * edge.side,
         roadGroup,
       );
@@ -348,7 +405,7 @@ function renderRoads(cx, cz) {
         dash.length,
         mats.mark,
         a[0] + dx * dash.t,
-        0.22,
+        ROAD_Y + 0.025,
         a[1] + dz * dash.t,
         roadGroup,
       ).rotation.y = angle;
@@ -891,6 +948,11 @@ function separateFrom(agent, others, gap) {
     nudgeAlong(agent, gap);
   }
 }
+const smoking = new Set(smokerSlots(pedestrians.length));
+pedestrians.forEach((ped, index) => {
+  ped.smokes = smoking.has(index);
+});
+const sellers = [];
 const traffic = [];
 const bikeColors = [0xb4332a, 0x1e1e1e, 0x1d4e89, 0xc5c8cc, 0x2f6b45, 0x8a3b2f];
 const carColors = [0xa7b7b3, 0xe3dac4, 0x678e92, 0xa4523f, 0xd7c4a2, 0x6e8b74];
@@ -1115,10 +1177,11 @@ for (let i = 0; i < 40; i++) {
 }
 let smokeCursor = 0;
 function emitSmoke(mesh, speed, dt, holder) {
-  if (speed < 0.8) return;
+  const spec = exhaustPuff();
+  if (speed < spec.minSpeed) return;
   holder.smokeWait = (holder.smokeWait || 0) - dt;
   if (holder.smokeWait > 0) return;
-  holder.smokeWait = 0.14;
+  holder.smokeWait = spec.wait;
   const puff = smokePuffs[smokeCursor++ % smokePuffs.length];
   const local = mesh.userData.exhaust || [0, 0.4, 1.4];
   const yaw = mesh.rotation.y;
@@ -1130,20 +1193,65 @@ function emitSmoke(mesh, speed, dt, holder) {
     mesh.position.z - local[0] * sin + local[2] * cos,
   );
   puff.mesh.visible = true;
-  puff.life = 0.65;
-  puff.mesh.scale.setScalar(0.35);
-  puff.mesh.material.opacity = 0.38;
+  puff.life = spec.life;
+  puff.mesh.scale.setScalar(spec.scale);
+  puff.mesh.material.color.setHex(spec.color);
+  puff.mesh.material.opacity = spec.opacity;
 }
 function tickSmoke(dt) {
+  const spec = exhaustPuff();
   for (const puff of smokePuffs) {
     if (puff.life <= 0) continue;
     puff.life -= dt;
-    puff.mesh.position.y += dt * 0.9;
-    const scale = puff.mesh.scale.x * (1 + dt * 1.6);
+    puff.mesh.position.y += dt * spec.rise;
+    const scale = puff.mesh.scale.x * (1 + dt * spec.grow);
     puff.mesh.scale.setScalar(scale);
-    puff.mesh.material.opacity = Math.max(0, puff.life) * 0.45;
+    puff.mesh.material.opacity = Math.max(0, puff.life) * spec.opacity;
     if (puff.life <= 0) puff.mesh.visible = false;
   }
+}
+function dressSmokers() {
+  for (const ped of pedestrians) {
+    if (!ped.smokes || ped.mesh.getObjectByName("cigarette")) continue;
+    ped.mesh.add(makeCigarette());
+    ped.mesh.add(makeSmokeWisp());
+  }
+}
+function buildStreetCorners() {
+  const plans = cornerPlans(
+    city.roads,
+    city.spawn[0],
+    city.spawn[1],
+    (x, z) => collides(x, z, 0.65),
+    obstacles,
+  );
+  const group = new THREE.Group();
+  group.name = "street-corners";
+  for (const plan of plans.construction) {
+    const mesh = makeConstruction();
+    mesh.position.set(plan.x, 0, plan.z);
+    mesh.rotation.y = plan.yaw;
+    group.add(mesh);
+  }
+  plans.stalls.forEach((plan, index) => {
+    const stall = makeFoodStall(plan);
+    stall.position.set(plan.x, 0, plan.z);
+    stall.rotation.y = plan.yaw;
+    group.add(stall);
+    const pose = sellerPose(plan);
+    const seller = person(sellerIndex(index));
+    seller.position.set(pose.x, 0, pose.z);
+    seller.rotation.y = pose.yaw;
+    scene.add(seller);
+    sellers.push({ mesh: seller, x: pose.x, z: pose.z });
+  });
+  for (const plan of plans.shops) {
+    const shop = makeShopFront(plan);
+    shop.position.set(plan.x, 0, plan.z);
+    shop.rotation.y = plan.yaw;
+    group.add(shop);
+  }
+  scene.add(group);
 }
 function renderPlaces() {
   const group = new THREE.Group();
@@ -1205,10 +1313,11 @@ function renderPlaces() {
 }
 renderPlaces();
 let detailedHumans = 0;
-let lookId = defaultLook().id;
-Promise.all([hydrateResidents(pedestrians.map(p=>p.mesh)),prepareLooks()])
- .then(([n])=>{detailedHumans=n;if(applyLook(avatar,lookId))detailedHumans++;})
-  .catch((e) => console.warn("Human asset fallback", e));
+buildStreetCorners();
+let lookId=defaultLook().id;
+Promise.all([hydrateResidents([...pedestrians.map(p=>p.mesh),...sellers.map(s=>s.mesh)]),prepareLooks()])
+.then(([n])=>{detailedHumans=n;if(applyLook(avatar,lookId))detailedHumans++;})
+.catch(e=>console.warn('Human asset fallback',e)).finally(dressSmokers);
 let job = null,
   wallet = 0;
 try {
@@ -3172,6 +3281,13 @@ function animate() {
     for (const lamp of lamps) lamp.material.emissiveIntensity = lit ? 1.6 : 0.05;
   }
   tickSmoke(dt);
+  const hazeTime = performance.now() * 0.001;
+  for (const ped of pedestrians) {
+    if (!ped.smokes) continue;
+    const wisp = ped.mesh.getObjectByName("smoke-wisp");
+    if (wisp) tickWisp(wisp, hazeTime);
+  }
+  for (const seller of sellers) seller.mesh.userData.walk?.(dt, 0);
   const p = actor().position;
   if (Math.hypot(p.x - buildingCenter.x, p.z - buildingCenter.y) > 300)
     renderBuildings(p.x, p.z);
