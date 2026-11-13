@@ -2,6 +2,7 @@ import { createDelivery, tickDelivery, interactDelivery } from "./delivery.js";
 import { streetDetails, swayCanopies, laneMarking } from "./street-details.js";
 import { loadSurfacePhotos, hydrateResidents } from "./visual-assets.js";
 import { lines } from "./dialogue.js";
+import { CINEMATIC, createCinematicComposer, thirdPersonRig } from "./cinematic.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import "./style.css";
@@ -89,11 +90,12 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 const camera = new THREE.PerspectiveCamera(
-  57,
+  CINEMATIC.fov,
   innerWidth / innerHeight,
   0.2,
   6000,
 );
+const composer = createCinematicComposer(renderer, scene, camera);
 const hemi = new THREE.HemisphereLight(0xe7ecde, 0x676956, 2.3);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffd59b, 3.5);
@@ -1290,10 +1292,12 @@ $("photo").onclick = () => {
   const aspect = camera.aspect;
   try {
     renderer.setPixelRatio(1);
+    composer.setPixelRatio(1);
     renderer.setSize(3840, 2160, false);
+    composer.setSize(3840, 2160);
     camera.aspect = 3840 / 2160;
     camera.updateProjectionMatrix();
-    renderer.render(scene, camera);
+    composer.render();
     const link = document.createElement("a");
     link.download = "pune-4k.png";
     link.href = renderer.domElement.toDataURL("image/png");
@@ -1301,7 +1305,9 @@ $("photo").onclick = () => {
     toast("Saved 3840 × 2160 scene photo.");
   } finally {
     renderer.setPixelRatio(oldPixelRatio);
+    composer.setPixelRatio(oldPixelRatio);
     renderer.setSize(size.x, size.y, false);
+    composer.setSize(size.x, size.y);
     camera.aspect = aspect;
     camera.updateProjectionMatrix();
   }
@@ -1981,26 +1987,25 @@ function animate() {
   if (Math.hypot(p.x - buildingCenter.x, p.z - buildingCenter.y) > 300)
     renderBuildings(p.x, p.z);
   if (active && walking) {
-    const back = view === 1 ? 2.6 : view === 2 ? 16 : walking ? 4.4 : 8;
-    const orbit = view === 2 ? 0.9 : lookPitch;
+    const rig = thirdPersonRig({ walking: true, view });
+    const orbit = rig.overhead ? 0.9 : lookPitch;
     const cosP = Math.cos(orbit);
     desiredCamera.set(
-      p.x + Math.sin(lookYaw) * back * cosP,
-      p.y + (walking ? 1.45 : 1.6) + Math.sin(orbit) * back,
-      p.z + Math.cos(lookYaw) * back * cosP,
+      p.x + Math.sin(lookYaw) * rig.back * cosP,
+      p.y + 1.45 + Math.sin(orbit) * rig.back,
+      p.z + Math.cos(lookYaw) * rig.back * cosP,
     );
     look.set(
       p.x - Math.sin(lookYaw) * 2.2,
-      p.y + (walking ? 1.35 : 1.1),
+      p.y + 1.35,
       p.z - Math.cos(lookYaw) * 2.2,
     );
   } else if (active) {
-    const back = view === 1 ? 5 : view === 2 ? 18 : 13,
-      height = view === 1 ? 3 : view === 2 ? 42 : 7;
+    const rig = thirdPersonRig({ walking: false, view });
     desiredCamera.set(
-      p.x + Math.sin(yaw) * back,
-      p.y + height,
-      p.z + Math.cos(yaw) * back,
+      p.x + Math.sin(yaw) * rig.back,
+      p.y + rig.height,
+      p.z + Math.cos(yaw) * rig.back,
     );
     look.set(p.x - Math.sin(yaw) * 8, 1.5, p.z - Math.cos(yaw) * 8);
   } else {
@@ -2042,7 +2047,7 @@ function animate() {
         `${(origin.lat - p.z / 111320).toFixed(4)}° N · ${(origin.lon + p.x / 105500).toFixed(4)}° E`;
   }
   swayCanopies(detailGroup, performance.now() * 0.001);
-  renderer.render(scene, camera);
+  composer.render();
 }
 camera.position.set(150, 65, 230);
 animate();
@@ -2050,6 +2055,7 @@ window.addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
 });
 // Read-only diagnostics for smoke tests and performance inspection.
 window.__pune = {
