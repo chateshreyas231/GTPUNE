@@ -595,5 +595,6 @@ export {
   distanceGain,
   makeVehicle,
   makeMotorcycle,
+  makeArmoredCarrier,
 } from "./vehicles.js";
 
