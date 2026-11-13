@@ -1,5 +1,5 @@
 import { createDelivery, tickDelivery, interactDelivery } from "./delivery.js";
-import { streetDetails } from "./street-details.js";
+import { streetDetails, swayCanopies } from "./street-details.js";
 import { loadSurfacePhotos, hydrateResidents } from "./visual-assets.js";
 import { lines } from "./dialogue.js";
 import * as THREE from "three";
@@ -13,6 +13,7 @@ import {
   makeCar,
   person,
   origin,
+  STOREY_METERS,
 } from "./city.js";
 const $ = (id) => document.getElementById(id);
 let city = fallbackCity();
@@ -77,7 +78,6 @@ const mats = {
   walk: material(0xb2af92),
   mark: material(0xc8c9aa),
   trunk: material(0x6e5c42),
-  leaf: material(0x566d43),
 };
 function box(w, h, d, mat, x, y, z, parent = scene) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -106,7 +106,14 @@ for (const road of city.roads)
     const angle = Math.atan2(dx, dz),
       x = (a[0] + b[0]) / 2,
       z = (a[1] + b[1]) / 2;
-    roadSegments.push({ a, b, width: road.width, length, angle });
+    roadSegments.push({
+      a,
+      b,
+      width: road.width,
+      sidewalk: road.sidewalk ?? 1.6,
+      length,
+      angle,
+    });
   }
 const roadGroup = new THREE.Group();
 scene.add(roadGroup);
@@ -118,10 +125,19 @@ function renderRoads(cx, cz) {
   for (const r of roadSegments) {
     if (segmentDistance(cx, cz, r.a, r.b) > 1000) continue;
     const { a, b, width, length, angle } = r,
+      sidewalk = r.sidewalk ?? 1.6,
       x = (a[0] + b[0]) / 2,
       z = (a[1] + b[1]) / 2;
-    box(width + 5, 0.2, length, mats.walk, x, 0, z, roadGroup).rotation.y =
-      angle;
+    box(
+      width + sidewalk * 2,
+      0.2,
+      length,
+      mats.walk,
+      x,
+      0,
+      z,
+      roadGroup,
+    ).rotation.y = angle;
     box(
       width,
       0.08,
@@ -185,6 +201,7 @@ const buildingMats = palette.map(
     new THREE.MeshStandardMaterial({ color: c, map: facadeTex, roughness: 1 }),
 );
 const roofMat = material(0x9b9b8b);
+const bandMat = material(0xc8bfa8);
 const obstacles = city.buildings.map((b) => {
   const xs = b.points.map((p) => p[0]),
     zs = b.points.map((p) => p[1]);
@@ -207,6 +224,7 @@ function renderBuildings(cx, cz) {
   }
   buildingCenter.set(cx, cz);
   renderRoads(cx, cz);
+  let banded = 0;
   for (const b of obstacles) {
     if (
       Math.hypot((b.minX + b.maxX) / 2 - cx, (b.minZ + b.maxZ) / 2 - cz) > 900
@@ -232,18 +250,54 @@ function renderBuildings(cx, cz) {
     m.castShadow = true;
     m.receiveShadow = true;
     buildingGroup.add(m);
+    const dist = Math.hypot(
+      (b.minX + b.maxX) / 2 - cx,
+      (b.minZ + b.maxZ) / 2 - cz,
+    );
+    const floors =
+      b.floors || Math.max(1, Math.round(b.height / STOREY_METERS));
+    if (dist < 130 && banded < 48 && floors > 1) {
+      banded++;
+      const pts = b.points;
+      for (let f = 1; f < floors && f <= 8; f++) {
+        const y = f * STOREY_METERS;
+        if (y > b.height - 0.35) break;
+        for (let i = 0; i < pts.length; i++) {
+          const p0 = pts[i],
+            p1 = pts[(i + 1) % pts.length],
+            dx = p1[0] - p0[0],
+            dz = p1[1] - p0[1],
+            len = Math.hypot(dx, dz);
+          if (len < 1.8) continue;
+          const band = new THREE.Mesh(
+            new THREE.BoxGeometry(0.34, 0.16, len),
+            bandMat,
+          );
+          band.position.set((p0[0] + p1[0]) / 2, y, (p0[1] + p1[1]) / 2);
+          band.rotation.y = Math.atan2(dx, dz);
+          band.castShadow = true;
+          band.receiveShadow = true;
+          buildingGroup.add(band);
+        }
+      }
+    }
   }
   mergeStatic(buildingGroup);
   if (detailGroup) {
     scene.remove(detailGroup);
+    const disposed = new Set();
     detailGroup.traverse((o) => {
-      if (o.isMesh) {
-        o.geometry.dispose();
-        o.material.dispose();
+      if (!o.isMesh) return;
+      o.geometry.dispose();
+      const list = Array.isArray(o.material) ? o.material : [o.material];
+      for (const mat of list) {
+        if (!mat || disposed.has(mat)) continue;
+        disposed.add(mat);
+        mat.dispose();
       }
     });
   }
-  detailGroup = streetDetails(cx, cz, roadSegments, collides);
+  detailGroup = streetDetails(cx, cz, roadSegments, collides, obstacles);
   mergeStatic(detailGroup);
   scene.add(detailGroup);
 }
@@ -279,35 +333,6 @@ const shopNames = [
   "नमस्कार पुणे",
   "BAKERY & CAFÉ",
 ];
-const treeGeo = new THREE.IcosahedronGeometry(1, 1);
-for (
-  let i = 0;
-  i < roadSegments.length;
-  i += Math.max(1, Math.floor(roadSegments.length / 170))
-) {
-  const r = roadSegments[i];
-  for (let t = 22; t < r.length; t += 55) {
-    const dx = (r.b[0] - r.a[0]) / r.length,
-      dz = (r.b[1] - r.a[1]) / r.length;
-    for (const side of [-1, 1]) {
-      const x = r.a[0] + dx * t + dz * (r.width / 2 + 5) * side,
-        z = r.a[1] + dz * t - dx * (r.width / 2 + 5) * side;
-      if (
-        roadSegments.some(
-          (segment) =>
-            segmentDistance(x, z, segment.a, segment.b) < segment.width / 2 + 1,
-        )
-      )
-        continue;
-      box(0.65, 5, 0.65, mats.trunk, x, 2.5, z);
-      const tree = new THREE.Mesh(treeGeo, mats.leaf);
-      tree.scale.set(4.5, 5.5, 4.5);
-      tree.position.set(x, 7, z);
-      tree.castShadow = true;
-      scene.add(tree);
-    }
-  }
-}
 if (city.source === "illustrative") {
   for (let i = 0; i < 9; i++) {
     const z = -650 + i * 150;
@@ -1199,6 +1224,7 @@ function animate() {
       document.querySelector(".location small").textContent =
         `${(origin.lat - p.z / 111320).toFixed(4)}° N · ${(origin.lon + p.x / 105500).toFixed(4)}° E`;
   }
+  swayCanopies(detailGroup, performance.now() * 0.001);
   renderer.render(scene, camera);
 }
 camera.position.set(150, 65, 230);
