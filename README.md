@@ -1,6 +1,6 @@
 # GTPUNE
 
-A third-person chapter on FC Road in Pune. You are new on the road, with one bag. Kothrud and Karve Nagar are listed and locked. FC Road is a textured stretch: lanes, a junction, the college strip, a chai stall, and a bookshop. The drawings are made in the page, not imported.
+A third-person chapter on FC Road in Pune. You are new on the road, with one bag. Kothrud and Karve Nagar are listed and locked. FC Road is a street-level stretch: buildings of different heights with shop floors, setbacks, balconies, and awnings, plus lanes, a junction, and street lights. The textures are drawn in the page.
 
 Two deliveries start at the chai stall. An old scooter and an auto are parked on the road. The libraries are Three.js and Rapier, loaded in the browser with no build step.
 

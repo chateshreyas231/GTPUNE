@@ -2,7 +2,7 @@ import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { interactAt } from "./missions.js";
 import { emptySave, parseSave } from "./save.js";
-import { buildStreet, moodColors, setStreetMood, tickStreet } from "./street.js";
+import { buildStreet, markStreetCaster, moodColors, renderContact, setStreetMood, tickStreet } from "./street.js";
 
 const SAVE_KEY = "gtpune-save";
 const FIXED = 1 / 60;
@@ -26,8 +26,8 @@ const statusEl = document.querySelector("#status");
 
 const keys = new Set();
 let save = loadSave();
-let yaw = 0;
-let pitch = 0.25;
+let yaw = -Math.PI / 2;
+let pitch = 0.04;
 let vy = 0;
 let mode = "foot";
 let honked = false;
@@ -77,7 +77,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc5d8ea);
 scene.fog = new THREE.Fog(0xc5d8ea, 40, 155);
 
-const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 500);
+const camera = new THREE.PerspectiveCamera(68, 1, 0.15, 500);
 const sun = new THREE.DirectionalLight(0xfff1d6, 1.35);
 sun.position.set(32, 48, 18);
 sun.castShadow = true;
@@ -176,6 +176,8 @@ function makeVehicle(spec) {
     return wheel;
   });
   scene.add(group);
+  markStreetCaster(group);
+  for (const wheel of wheels) markStreetCaster(wheel);
   return { ...spec, body, collider, controller, group, wheels };
 }
 
@@ -210,6 +212,7 @@ function makePlayer(x, y, z) {
   );
   bag.position.set(0.2, 0.12, -0.12);
   mesh.add(torso, head, bag);
+  markStreetCaster(mesh);
   scene.add(mesh);
   return { body, collider, controller, mesh };
 }
@@ -401,15 +404,16 @@ function syncRide(ride) {
 
 function frameCamera() {
   const target = mode === "foot" ? player.body.translation() : rides.find((ride) => ride.id === mode).body.translation();
-  const distance = mode === "foot" ? 7.4 : 10;
-  const lookHeight = mode === "foot" ? 1.5 : 1.8;
+  const distance = mode === "foot" ? 3.35 : 6.2;
+  const eye = mode === "foot" ? 1.02 : 1.65;
+  const look = mode === "foot" ? 0.92 : 1.2;
   const cosPitch = Math.cos(pitch);
   camera.position.set(
     target.x + Math.sin(yaw) * distance * cosPitch,
-    target.y + lookHeight + Math.sin(pitch) * distance,
+    target.y + eye + Math.sin(pitch) * distance,
     target.z + Math.cos(yaw) * distance * cosPitch,
   );
-  camera.lookAt(target.x, target.y + lookHeight * 0.6, target.z);
+  camera.lookAt(target.x, target.y + look, target.z);
 }
 
 function stepRain() {
@@ -486,6 +490,7 @@ function loop(now) {
   frameCamera();
   refreshHud();
   publish();
+  renderContact(renderer);
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
@@ -586,7 +591,7 @@ window.addEventListener("mousemove", (event) => {
   if (document.pointerLockElement !== canvas) return;
   yaw -= event.movementX * 0.0022;
   pitch -= event.movementY * 0.002;
-  pitch = Math.max(-0.35, Math.min(0.9, pitch));
+  pitch = Math.max(-0.2, Math.min(0.28, pitch));
 });
 
 canvas.addEventListener("click", () => {
