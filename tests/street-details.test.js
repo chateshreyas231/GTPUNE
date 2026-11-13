@@ -6,6 +6,7 @@ import {
   LEAF_CLUMPS,
   AWNING_DEPTH_M,
   SHOP_BAY_M,
+  laneMarking,
 } from "../src/street-details.js";
 
 test("trees are leaf clumps that sway, and shop bays follow the frontage", () => {
@@ -50,4 +51,14 @@ test("trees are leaf clumps that sway, and shop bays follow the frontage", () =>
   const frontage = 18;
   const bays = Math.max(1, Math.round(frontage / SHOP_BAY_M));
   assert.equal(awnings, bays);
+  let balconies = 0;
+  root.traverse((object) => {
+    if (object.name === "balcony") balconies++;
+  });
+  assert.ok(balconies >= 2);
+  const marks = laneMarking(90);
+  assert.equal(marks.edges.length, 2);
+  assert.ok(marks.edges.every((edge) => edge.color === "yellow"));
+  assert.ok(marks.dashes.length >= 4);
+  assert.ok(marks.dashes.every((dash) => dash.color === "white"));
 });

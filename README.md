@@ -27,7 +27,7 @@ PORT=3001 npm start
 - P: pause. The game also pauses on a hidden tab.
 - Follow the three amber markers to complete the evening run. Return to Deccan resets your vehicle position.
 
-Traffic follows road segments and yields near the player. Buildings, pedestrians and cars block movement. NPCs are fictional people, with a skinned reference character, procedural residents and simpler family figures; dialogue is authored text. Speech uses nine bundled Marathi, Hindi and Indian English neural clips; no installed voice is required. These are synthetic performances, not local actor recordings. Engine and horn sounds are synthesized. See [asset provenance](docs/ASSETS.md).
+Traffic follows road segments and yields near the player. Buildings, pedestrians and cars block movement. NPCs are fictional people. The player and the pedestrians on the street use rigged characters from Quaternius’s Ultimate Animated Character pack, uploaded by Quaternius to OpenGameArt: https://opengameart.org/content/animated-characters-pack . That page lists the license as CC0 and links to [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/). Skin and clothes are recolored in the game. Dialogue is authored text. Speech uses nine bundled Marathi, Hindi and Indian English neural clips; no installed voice is required. These are synthetic performances, not local actor recordings. Engine and horn sounds are synthesized. See [asset provenance](docs/ASSETS.md).
 
 ## Real Pune map data
 

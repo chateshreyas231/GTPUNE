@@ -45,16 +45,18 @@ export function fallbackCity() {
           color: rnd(),
         });
       }
+  const stops = [
+    { name: "FC ROAD", point: [-5, -450] },
+    { name: "KOTHRUD", point: [-600, 300] },
+    { name: "DECCAN GYMKHANA", point: [-5, 70] },
+  ];
   return {
     source: "illustrative",
     roads,
     buildings,
     spawn: [-5, 70],
-    stops: [
-      { name: "FC ROAD", point: [-5, -450] },
-      { name: "KOTHRUD", point: [-600, 300] },
-      { name: "DECCAN GYMKHANA", point: [-5, 70] },
-    ],
+    stops,
+    places: [],
   };
 }
 // Survey constants from public/data/pune-osm.json. See docs/MEASUREMENTS.md.
@@ -160,6 +162,69 @@ export function buildingSizeFromTags(tags = {}) {
   };
 }
 
+export function placeKindFromTags(tags = {}) {
+  if (tags.amenity === "school") return "school";
+  if (tags.amenity === "college" || tags.amenity === "university") return "college";
+  if (tags.leisure === "playground") return "playground";
+  if (tags.amenity === "fuel") return "fuel";
+  if (
+    tags.amenity === "gym" ||
+    tags.leisure === "fitness_centre" ||
+    tags.leisure === "fitness_station"
+  )
+    return "gym";
+  if (tags.shop) return "store";
+  return null;
+}
+
+const PLACE_LABEL = {
+  school: "School",
+  college: "College",
+  store: "Store",
+  playground: "Playground",
+  fuel: "Fuel",
+  gym: "Gym",
+};
+
+// The map label is the OpenStreetMap name. An untagged kind is absent.
+export function placeNameFromTags(tags = {}, kind) {
+  const named = String(tags.name || tags["name:en"] || "").trim();
+  return named || PLACE_LABEL[kind] || "Place";
+}
+
+export function elementPoint(element) {
+  if (Array.isArray(element.geometry) && element.geometry.length) {
+    let x = 0,
+      z = 0;
+    for (const p of element.geometry) {
+      const q = project(p.lat, p.lon);
+      x += q[0];
+      z += q[1];
+    }
+    return [x / element.geometry.length, z / element.geometry.length];
+  }
+  if (Number.isFinite(element.lat) && Number.isFinite(element.lon))
+    return project(element.lat, element.lon);
+  return null;
+}
+
+export function placesFromElements(elements) {
+  const places = [];
+  for (const element of elements || []) {
+    const kind = placeKindFromTags(element.tags);
+    if (!kind) continue;
+    const point = elementPoint(element);
+    if (!point) continue;
+    places.push({
+      kind,
+      point,
+      osm: true,
+      name: placeNameFromTags(element.tags, kind),
+    });
+  }
+  return places;
+}
+
 export function parseOSM(data) {
   if (!Array.isArray(data.elements))
     throw Error("Invalid OpenStreetMap response");
@@ -188,7 +253,8 @@ export function parseOSM(data) {
         width: measured.width,
         widthSource: measured.widthSource,
         sidewalk: sidewalkMeters(e.tags.name),
-        name: e.tags.name,
+        name: e.tags.name || "",
+        altName: e.tags.alt_name || "",
         highway: e.tags.highway,
       });
     }
@@ -200,6 +266,10 @@ export function parseOSM(data) {
         floors: measured.floors,
         heightSource: measured.heightSource,
         kind: e.tags.building,
+        id: e.id,
+        name: e.tags.name || "",
+        shop: e.tags.shop || "",
+        amenity: e.tags.amenity || "",
         color: ((e.id || 0) % 100) / 100,
       });
     }
@@ -232,16 +302,23 @@ export function parseOSM(data) {
     return best;
   };
   const spawn = nearest([0, 0]);
+  const stops = [
+    { name: "FC ROAD", point: nearest(project(18.5235, 73.8412)) },
+    { name: "KOTHRUD", point: nearest(project(18.5074, 73.8077)) },
+    { name: "DECCAN GYMKHANA", point: spawn },
+  ];
+  const surveyed = buildings.length;
+  const infill = fillBuildingGaps(buildings, roads);
+  for (const extra of infill) buildings.push(extra);
   return {
     source: "OpenStreetMap",
     roads,
     buildings,
     spawn,
-    stops: [
-      { name: "FC ROAD", point: nearest(project(18.5235, 73.8412)) },
-      { name: "KOTHRUD", point: nearest(project(18.5074, 73.8077)) },
-      { name: "DECCAN GYMKHANA", point: spawn },
-    ],
+    stops,
+    places: placesFromElements(data.elements),
+    surveyed,
+    infill: infill.length,
   };
 }
 export function segmentDistance(x, z, a, b) {
@@ -269,6 +346,185 @@ export function inside(x, z, poly) {
   }
   return hit;
 }
+
+function footprintBounds(points) {
+  let minX = Infinity,
+    maxX = -Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
+  for (const p of points) {
+    if (p[0] < minX) minX = p[0];
+    if (p[0] > maxX) maxX = p[0];
+    if (p[1] < minZ) minZ = p[1];
+    if (p[1] > maxZ) maxZ = p[1];
+  }
+  return { minX, maxX, minZ, maxZ };
+}
+
+function coverGrid(grid, cell, box, item) {
+  const x0 = Math.floor(box.minX / cell),
+    x1 = Math.floor(box.maxX / cell),
+    z0 = Math.floor(box.minZ / cell),
+    z1 = Math.floor(box.maxZ / cell);
+  for (let x = x0; x <= x1; x++)
+    for (let z = z0; z <= z1; z++) {
+      const key = `${x}:${z}`;
+      let list = grid.get(key);
+      if (!list) grid.set(key, (list = []));
+      list.push(item);
+    }
+}
+
+function gridNear(grid, cell, x, z) {
+  const cx = Math.floor(x / cell),
+    cz = Math.floor(z / cell),
+    out = [];
+  for (let ix = cx - 1; ix <= cx + 1; ix++)
+    for (let iz = cz - 1; iz <= cz + 1; iz++) {
+      const list = grid.get(`${ix}:${iz}`);
+      if (list) out.push(...list);
+    }
+  return out;
+}
+
+// Original blocks in the holes between surveyed footprints. Each one keeps a
+// narrow gap from its neighbours and stays off the carriageway.
+export function fillBuildingGaps(buildings, roads) {
+  const cell = 28;
+  const gap = 0.85;
+  const boxes = [];
+  const grid = new Map();
+  for (let i = 0; i < buildings.length; i++) {
+    const building = buildings[i];
+    if (!building.points || building.points.length < 3) continue;
+    const box = footprintBounds(building.points);
+    const item = { ...box, building, i };
+    boxes.push(item);
+    coverGrid(grid, cell, box, item);
+  }
+  const roadGrid = new Map();
+  for (const road of roads || []) {
+    const half = Math.max(1.6, (road.width || 7) / 2);
+    const pts = road.points || [];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1],
+        b = pts[i];
+      const seg = {
+        a,
+        b,
+        half,
+        minX: Math.min(a[0], b[0]) - half,
+        maxX: Math.max(a[0], b[0]) + half,
+        minZ: Math.min(a[1], b[1]) - half,
+        maxZ: Math.max(a[1], b[1]) + half,
+      };
+      coverGrid(roadGrid, cell, seg, seg);
+    }
+  }
+  const onRoad = (x, z) => {
+    for (const seg of gridNear(roadGrid, cell, x, z)) {
+      if (x < seg.minX || x > seg.maxX || z < seg.minZ || z > seg.maxZ) continue;
+      if (segmentDistance(x, z, seg.a, seg.b) < seg.half) return true;
+    }
+    return false;
+  };
+  const occupied = (x, z, ignore) => {
+    for (const item of gridNear(grid, cell, x, z)) {
+      if (item === ignore) continue;
+      if (x < item.minX || x > item.maxX || z < item.minZ || z > item.maxZ) continue;
+      if (inside(x, z, item.building.points)) return item;
+    }
+    return null;
+  };
+  const infill = [];
+  const used = new Set();
+  const made = new Map();
+  for (const item of boxes) {
+    if ((made.get(item.i) || 0) >= 2) continue;
+    const points = item.building.points;
+    const closed =
+      points.length > 3 &&
+      Math.hypot(points[0][0] - points.at(-1)[0], points[0][1] - points.at(-1)[1]) < 0.05;
+    const n = closed ? points.length - 1 : points.length;
+    for (let i = 0; i < n && (made.get(item.i) || 0) < 2; i++) {
+      const p0 = points[i],
+        p1 = points[(i + 1) % n];
+      const dx = p1[0] - p0[0],
+        dz = p1[1] - p0[1],
+        len = Math.hypot(dx, dz);
+      if (len < 4.5 || len > 80) continue;
+      const mx = (p0[0] + p1[0]) / 2,
+        mz = (p0[1] + p1[1]) / 2;
+      let nx = -dz / len,
+        nz = dx / len;
+      if (inside(mx + nx * 0.6, mz + nz * 0.6, points)) {
+        nx = -nx;
+        nz = -nz;
+      }
+      if (onRoad(mx + nx * 1.4, mz + nz * 1.4)) continue;
+      let clear = 1.1;
+      let neighbor = null;
+      for (const d of [3.2, 6, 9, 12, 15]) {
+        const x = mx + nx * d,
+          z = mz + nz * d;
+        if (onRoad(x, z)) break;
+        const hit = occupied(x, z, item);
+        if (hit) {
+          neighbor = hit;
+          break;
+        }
+        clear = d;
+      }
+      if (!neighbor || clear < 3.4 || clear > 14) continue;
+      const outer = clear - 0.45;
+      const inner = gap;
+      if (outer - inner < 2.3) continue;
+      const depth = outer - inner;
+      const along = Math.min(len - 1.4, 11);
+      if (along < 3.6) continue;
+      const cx = mx + nx * (inner + depth / 2);
+      const cz = mz + nz * (inner + depth / 2);
+      const key = `${Math.round(cx / 4)}:${Math.round(cz / 4)}`;
+      if (used.has(key)) continue;
+      const hx = (dx / len) * (along / 2),
+        hz = (dz / len) * (along / 2),
+        px = nx * (depth / 2),
+        pz = nz * (depth / 2);
+      const footprint = [
+        [cx - hx - px, cz - hz - pz],
+        [cx + hx - px, cz + hz - pz],
+        [cx + hx + px, cz + hz + pz],
+        [cx - hx + px, cz - hz + pz],
+      ];
+      if (footprint.some(([x, z]) => onRoad(x, z) || occupied(x, z, null))) continue;
+      if (onRoad(cx, cz) || occupied(cx, cz, null)) continue;
+      const height = Math.min(
+        36,
+        Math.max(
+          3,
+          ((item.building.height || 9) + (neighbor.building.height || 9)) / 2,
+        ),
+      );
+      const extra = {
+        points: footprint,
+        height,
+        floors: Math.max(1, Math.round(height / STOREY_METERS)),
+        heightSource: "infill",
+        kind: "yes",
+        color: ((infill.length * 17) % 100) / 100,
+        infill: true,
+      };
+      const bounds = footprintBounds(footprint);
+      const stored = { ...bounds, building: extra, i: -1 - infill.length };
+      coverGrid(grid, cell, bounds, stored);
+      used.add(key);
+      made.set(item.i, (made.get(item.i) || 0) + 1);
+      infill.push(extra);
+    }
+  }
+  return infill;
+}
+
 export function makeCar(color = 0xeee6cc, rickshaw = false) {
   const g = new THREE.Group();
   const box = (w, h, d, c, x, y, z) => {
@@ -308,69 +564,52 @@ export function makeCar(color = 0xeee6cc, rickshaw = false) {
     }
   return g;
 }
-export function person(index) {
-  const g = new THREE.Group(),
-    skin = [0x8a553b, 0xb67b50, 0x754b38, 0xcc996b][index % 4],
-    shirt = [0xe9ac52, 0x8aaea6, 0xb66c65, 0xeff0d7, 0x816c9a][index % 5];
-  const mat = (c) =>
-    new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 });
-  const add = (geo, c, x, y, z, parent = g) => {
-    const m = new THREE.Mesh(geo, mat(c));
-    m.position.set(x, y, z);
-    m.castShadow = true;
-    parent.add(m);
-    return m;
-  };
-  add(new THREE.SphereGeometry(0.19, 16, 12), skin, 0, 1.65, 0).scale.set(
-    0.86,
-    1.12,
-    0.9,
-  );
-  add(
-    new THREE.SphereGeometry(0.195, 12, 8),
-    0x242322,
-    0,
-    1.76,
-    0.015,
-  ).scale.set(0.92, 0.55, 0.97);
-  add(new THREE.CylinderGeometry(0.085, 0.09, 0.12, 8), skin, 0, 1.43, 0);
-  add(
-    new THREE.CylinderGeometry(0.23, 0.19, 0.58, 12),
-    shirt,
-    0,
-    1.1,
-    0,
-  ).scale.z = 0.65;
-  for (const x of [-0.065, 0.065]) {
-    add(new THREE.SphereGeometry(0.025, 8, 6), 0xe6dac8, x, 1.68, -0.16);
-    add(new THREE.SphereGeometry(0.012, 6, 6), 0x242424, x, 1.68, -0.181);
-  }
-  add(new THREE.SphereGeometry(0.035, 8, 6), skin, 0, 1.61, -0.18);
-  const legs = [],
-    arms = [];
-  for (const side of [-1, 1]) {
-    const leg = new THREE.Group();
-    leg.position.set(side * 0.11, 0.83, 0);
-    g.add(leg);
-    legs.push(leg);
-    add(new THREE.CapsuleGeometry(0.09, 0.48, 4, 8), 0x344848, 0, -0.3, 0, leg);
-    add(new THREE.BoxGeometry(0.17, 0.13, 0.3), 0x262823, 0, -0.7, -0.05, leg);
-    const arm = new THREE.Group();
-    arm.position.set(side * 0.25, 1.34, 0);
-    g.add(arm);
-    arms.push(arm);
-    add(new THREE.CapsuleGeometry(0.065, 0.4, 4, 8), skin, 0, -0.25, 0, arm);
-    add(new THREE.SphereGeometry(0.075, 8, 6), skin, 0, -0.53, 0, arm);
-  }
-  g.userData.walk = (time, amount = 1) => {
-    legs.forEach(
-      (p, i) =>
-        (p.rotation.x = Math.sin(time * 6 + i * Math.PI) * 0.45 * amount),
-    );
-    arms.forEach(
-      (p, i) =>
-        (p.rotation.x = -Math.sin(time * 6 + i * Math.PI) * 0.35 * amount),
-    );
-  };
-  return g;
-}
+export {
+  stepGait,
+  person,
+  residentProfile,
+  RESIDENTS,
+  orbitLook,
+  footLookActive,
+  footPace,
+  beginJump,
+  WALK_SPEED,
+  RUN_SPEED,
+  JUMP_SPEED,
+} from "./people.js";
+export {
+  mulberry32,
+  nodeKey,
+  splitRoadsAtJunctions,
+  roadAdjacency,
+  planTrip,
+  segmentPoint,
+  tripPolyline,
+  advanceAlong,
+  chooseGoal,
+  laneLateral,
+  sidewalkLateral,
+} from "./routes.js";
+export {
+  STREET_FLEET,
+  CAR_BODIES,
+  BIKE_BODIES,
+  BODY_LABELS,
+  VEHICLE_TONES,
+  fleetBody,
+  distanceGain,
+  makeVehicle,
+  makeMotorcycle,
+} from "./vehicles.js";
+export {
+  roadTitle,
+  roadUnder,
+  buildingLook,
+  frontageName,
+  isShopFront,
+  PLASTER,
+  GLASS_PLASTER,
+  SHOP_BANDS,
+  SHOP_BOARDS,
+} from "./place-names.js";
+
