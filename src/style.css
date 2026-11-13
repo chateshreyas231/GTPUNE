@@ -444,6 +444,39 @@ kbd {
 .settings label {
   font-size: 7px;
 }
+#cheat-bar {
+  position: fixed;
+  left: 50%;
+  top: 148px;
+  z-index: 6;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: #102a25f2;
+  border: 1px solid #eabc6f88;
+  padding: 8px 12px;
+}
+#cheat-bar[hidden] {
+  display: none;
+}
+#cheat-bar label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #edbd6d;
+}
+#cheat-line {
+  width: 180px;
+  background: transparent;
+  border: 0;
+  color: #f4f0df;
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+#cheat-line:focus {
+  outline: none;
+}
 #toast {
   position: fixed;
   top: 105px;

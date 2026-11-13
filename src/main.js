@@ -58,6 +58,26 @@ import {
   wheelZoomFactor,
   zoomBy,
 } from "./map-view.js";
+import {
+  PEDESTRIAN_BOOST,
+  PEDESTRIAN_CAP,
+  TRAFFIC_BOOST,
+  TRAFFIC_CAP,
+  cheatNotice,
+  matchCheat,
+  nextWeather,
+  populationRoom,
+  weatherLook,
+} from "./cheats.js";
+import {
+  INCIDENTS,
+  createIncidentSchedule,
+  crowdRing,
+  nearestRoadSite,
+  pickIncidentSite,
+  releaseIncident,
+  tickSchedule,
+} from "./incidents.js";
 const $ = (id) => document.getElementById(id);
 let city = fallbackCity();
 try {
@@ -110,6 +130,35 @@ Object.assign(sun.shadow.camera, {
 });
 sun.shadow.bias = -0.0005;
 scene.add(sun, sun.target);
+const rainCount = 420;
+const rainPositions = new Float32Array(rainCount * 6);
+for (let i = 0; i < rainCount; i++) {
+  const x = (Math.random() - 0.5) * 72;
+  const y = Math.random() * 34;
+  const z = (Math.random() - 0.5) * 72;
+  const n = i * 6;
+  rainPositions[n] = x;
+  rainPositions[n + 1] = y;
+  rainPositions[n + 2] = z;
+  rainPositions[n + 3] = x + 0.12;
+  rainPositions[n + 4] = y - 0.7;
+  rainPositions[n + 5] = z + 0.04;
+}
+const rainGeo = new THREE.BufferGeometry();
+rainGeo.setAttribute("position", new THREE.BufferAttribute(rainPositions, 3));
+const rainStreaks = new THREE.LineSegments(
+  rainGeo,
+  new THREE.LineBasicMaterial({
+    color: 0xd7e6ee,
+    transparent: true,
+    opacity: 0.42,
+  }),
+);
+rainStreaks.visible = false;
+rainStreaks.frustumCulled = false;
+scene.add(rainStreaks);
+let weatherName = "clear";
+const streetProps = [];
 const material = (c) =>
   new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 });
 const mats = {
@@ -646,6 +695,10 @@ for (let i = 0; i < fleetCount; i++) {
   }
   traffic.push(agent);
 }
+const liveIncidents = [];
+const cityLife = createIncidentSchedule({ rng: mulberry32(77) });
+let nextPedIndex = pedestrians.length;
+let nextTrafficIndex = traffic.length;
 function makeStreetWeapon(id) {
   const group = new THREE.Group();
   const mat = (color) =>
@@ -1041,6 +1094,9 @@ function toggleWalk() {
   else releaseLook();
 }
 function collides(x, z, r = 1.4) {
+  for (const prop of streetProps) {
+    if (Math.hypot(x - prop.x, z - prop.z) < r + prop.radius) return true;
+  }
   for (const b of obstacles) {
     if (x < b.minX - r || x > b.maxX + r || z < b.minZ - r || z > b.maxZ + r)
       continue;
@@ -1193,6 +1249,469 @@ function interactJob() {
   } else toast("Dabba collected. Take it to FC Road before the timer ends.");
 }
 $("job").onclick = startJob;
+function countedPeople() {
+  return pedestrians.filter((ped) => !ped.incident).length;
+}
+function countedTraffic() {
+  return traffic.filter((agent) => !agent.incident).length;
+}
+function roadFrame(segment, t) {
+  const len =
+    segment.length ||
+    Math.hypot(segment.b[0] - segment.a[0], segment.b[1] - segment.a[1]) ||
+    1;
+  const dx = (segment.b[0] - segment.a[0]) / len;
+  const dz = (segment.b[1] - segment.a[1]) / len;
+  return {
+    x: segment.a[0] + (segment.b[0] - segment.a[0]) * t,
+    z: segment.a[1] + (segment.b[1] - segment.a[1]) * t,
+    dx,
+    dz,
+    nx: -dz,
+    nz: dx,
+    yaw: Math.atan2(-dx, -dz),
+  };
+}
+function pointFromFrame(frame, along, lateral) {
+  return [
+    frame.x + frame.dx * along + frame.nx * lateral,
+    frame.z + frame.dz * along + frame.nz * lateral,
+  ];
+}
+function makeRider(kind, index) {
+  const body =
+    kind === "motorcycle"
+      ? fleetBody(index % STREET_FLEET.motorcycles)
+      : fleetBody(STREET_FLEET.motorcycles + (index % STREET_FLEET.cars));
+  const color =
+    kind === "motorcycle"
+      ? bikeColors[index % bikeColors.length]
+      : carColors[index % carColors.length];
+  return { body, color, mesh: makeVehicle(body, color) };
+}
+function spawnPedestrianBoost() {
+  const room = populationRoom(countedPeople(), PEDESTRIAN_CAP, PEDESTRIAN_BOOST);
+  const here = actor().position;
+  for (let k = 0; k < room; k++) {
+    const i = nextPedIndex++;
+    const mesh = person(i);
+    const along = (k % 2 ? 1 : -1) * (14 + (k % 6) * 6);
+    const anchor = closestOn(populationRoads, here.x, here.z);
+    const segment = anchor?.segment || populationRoads[i % populationRoads.length];
+    const shift = along / Math.max(segment.length || 1, 1);
+    const t = anchor
+      ? Math.max(0.08, Math.min(0.92, anchor.t + shift))
+      : 0.2 + (k % 5) * 0.12;
+    const side = k % 2 ? 1 : -1;
+    const role = mesh.userData.role || {};
+    const agent = {
+      mesh,
+      kind: "person",
+      segment,
+      t,
+      direction: along >= 0 ? 1 : -1,
+      side,
+      lateral: (step) => sidewalkLateral(step.segment, side),
+      speed: role.kind === "older" ? 0.95 : 1.25 + (k % 4) * 0.08,
+      minLength: 40,
+      health: 3,
+      down: false,
+      dead: false,
+      rng: mulberry32(5000 + i * 19),
+      phase: i * 0.51,
+      yaw: 0,
+      x: here.x,
+      z: here.z,
+    };
+    scene.add(mesh);
+    beginTrip(agent);
+    pedestrians.push(agent);
+  }
+  return room;
+}
+function spawnTrafficBoost() {
+  let carsLeft = TRAFFIC_BOOST.cars;
+  let bikesLeft = TRAFFIC_BOOST.motorcycles;
+  const plan = [];
+  while (carsLeft || bikesLeft) {
+    if (bikesLeft) {
+      plan.push("motorcycle");
+      bikesLeft -= 1;
+    }
+    if (bikesLeft) {
+      plan.push("motorcycle");
+      bikesLeft -= 1;
+    }
+    if (carsLeft) {
+      plan.push("car");
+      carsLeft -= 1;
+    }
+  }
+  const room = populationRoom(countedTraffic(), TRAFFIC_CAP, plan.length);
+  const here = actor().position;
+  let added = 0;
+  for (const kind of plan) {
+    if (added >= room) break;
+    const index = nextTrafficIndex++;
+    const built = makeRider(kind, index);
+    const anchor = closestOn(populationRoads, here.x, here.z);
+    const segment =
+      anchor?.segment || populationRoads[(index * 3) % populationRoads.length];
+    if (!segment || segment.length < 8) continue;
+    const shift = ((added % 2 ? 1 : -1) * (18 + added * 4)) / segment.length;
+    const t = anchor
+      ? Math.max(0.08, Math.min(0.92, anchor.t + shift))
+      : 0.15 + (added % 7) * 0.1;
+    const agent = {
+      mesh: built.mesh,
+      kind,
+      body: built.body,
+      label: BODY_LABELS[built.body],
+      segment,
+      t,
+      direction: shift >= 0 ? 1 : -1,
+      lateral: (step) => laneLateral(step.segment, kind, step.direction),
+      speed: kind === "motorcycle" ? 8.4 : 6.6,
+      minLength: 70,
+      rng: mulberry32(8000 + index * 23),
+      yaw: 0,
+      hornIn: 4 + (index % 5),
+    };
+    scene.add(built.mesh);
+    beginTrip(agent);
+    if (Math.hypot((agent.x || 0) - here.x, (agent.z || 0) - here.z) < 16) {
+      const skip = advanceAlong(agent, 20 / Math.max(agent.speed, 1));
+      agent.x = skip.x;
+      agent.z = skip.z;
+      agent.index = skip.index;
+      agent.yaw = skip.yaw;
+      agent.mesh.position.set(agent.x, 0, agent.z);
+      agent.mesh.rotation.y = agent.yaw || 0;
+    }
+    traffic.push(agent);
+    added += 1;
+  }
+  return added;
+}
+function applyCityWeather(name) {
+  const look = weatherLook(name);
+  weatherName = ["drizzle", "monsoon", "blue-hour"].includes(name) ? name : "clear";
+  night = look.night;
+  scene.background.set(look.background);
+  scene.fog.color.copy(scene.background);
+  scene.fog.density = look.density;
+  sun.intensity = look.sun;
+  hemi.intensity = look.hemi;
+  rainStreaks.visible = look.rain;
+  rainStreaks.material.opacity = name === "monsoon" ? 0.62 : 0.4;
+  $("lighting").textContent = look.label;
+  if ($("temp")) $("temp").textContent = look.temp;
+  if ($("time")) $("time").textContent = look.clock;
+}
+function tickRain(dt) {
+  if (!rainStreaks.visible) return;
+  const heavy = weatherLook(weatherName).streak > 0.8;
+  const pos = rainGeo.attributes.position;
+  const fall = (heavy ? 26 : 15) * dt;
+  for (let i = 0; i < rainCount; i++) {
+    const top = i * 2;
+    let y = pos.getY(top) - fall;
+    if (y < 0) y = 28 + (i % 7);
+    pos.setY(top, y);
+    pos.setY(top + 1, y - (heavy ? 1.15 : 0.7));
+  }
+  pos.needsUpdate = true;
+  const p = actor().position;
+  rainStreaks.position.set(p.x, 0, p.z);
+}
+function hazardLamps(mesh, spots) {
+  const lamps = [];
+  for (const [x, y, z] of spots) {
+    const lamp = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.1, 0.08),
+      new THREE.MeshStandardMaterial({
+        color: 0xffb020,
+        emissive: 0xff8a1a,
+        emissiveIntensity: 2.2,
+        roughness: 0.35,
+      }),
+    );
+    lamp.position.set(x, y, z);
+    mesh.add(lamp);
+    lamps.push(lamp);
+  }
+  return lamps;
+}
+function makeTeaStall() {
+  const group = new THREE.Group();
+  const wood = new THREE.MeshStandardMaterial({ color: 0x8b5a34, roughness: 0.82 });
+  const cloth = new THREE.MeshStandardMaterial({ color: 0xd4652f, roughness: 0.72 });
+  const steel = new THREE.MeshStandardMaterial({
+    color: 0xc5c8cc,
+    metalness: 0.55,
+    roughness: 0.32,
+  });
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.86, 0.72), wood);
+  counter.position.y = 0.5;
+  const top = new THREE.Mesh(
+    new THREE.BoxGeometry(1.82, 0.07, 0.8),
+    new THREE.MeshStandardMaterial({ color: 0xe7d7b4, roughness: 0.6 }),
+  );
+  top.position.y = 0.96;
+  const poleA = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.15, 6), wood);
+  poleA.position.set(-0.72, 1.5, -0.28);
+  const poleB = poleA.clone();
+  poleB.position.x = 0.72;
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.05, 1.05), cloth);
+  awning.position.set(0, 2.05, -0.05);
+  const kettle = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), steel);
+  kettle.position.set(0.35, 1.12, 0.05);
+  group.add(counter, top, poleA, poleB, awning, kettle);
+  for (let i = 0; i < 3; i++) {
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.038, 0.07, 8), steel);
+    cup.position.set(-0.45 + i * 0.16, 1.04, 0.12);
+    group.add(cup);
+  }
+  return group;
+}
+function warningMarker() {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0.36);
+  shape.lineTo(-0.24, 0);
+  shape.lineTo(0.24, 0);
+  shape.closePath();
+  const mesh = new THREE.Mesh(
+    new THREE.ShapeGeometry(shape),
+    new THREE.MeshStandardMaterial({
+      color: 0xe25b2a,
+      emissive: 0x9a3412,
+      emissiveIntensity: 0.35,
+      side: THREE.DoubleSide,
+      roughness: 0.5,
+    }),
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.06;
+  return mesh;
+}
+function standPerson(index, x, z, face, incidentId) {
+  const mesh = person(index);
+  const agent = {
+    mesh,
+    kind: "person",
+    incident: incidentId,
+    hold: true,
+    segment: null,
+    t: 0.5,
+    direction: 1,
+    side: 1,
+    lateral: () => 0,
+    speed: 0,
+    minLength: 40,
+    health: 3,
+    down: false,
+    dead: false,
+    rng: mulberry32(12000 + index * 13),
+    phase: index * 0.9,
+    yaw: face,
+    x,
+    z,
+    points: null,
+  };
+  mesh.position.set(x, 0, z);
+  mesh.rotation.y = face;
+  scene.add(mesh);
+  pedestrians.push(agent);
+  return agent;
+}
+function parkIncidentVehicle(kind, frame, lateral, incidentId, askew = 0) {
+  const index = nextTrafficIndex++;
+  const built = makeRider(kind, index);
+  const spot = pointFromFrame(frame, 0, lateral);
+  const agent = {
+    mesh: built.mesh,
+    kind,
+    body: built.body,
+    label: BODY_LABELS[built.body],
+    incident: incidentId,
+    hold: true,
+    segment: null,
+    t: 0.5,
+    direction: 1,
+    speed: 0,
+    minLength: 70,
+    rng: mulberry32(15000 + index),
+    yaw: frame.yaw + askew,
+    x: spot[0],
+    z: spot[1],
+    points: null,
+    hornIn: 99,
+  };
+  built.mesh.position.set(spot[0], 0, spot[1]);
+  built.mesh.rotation.y = agent.yaw;
+  scene.add(built.mesh);
+  traffic.push(agent);
+  return agent;
+}
+function incidentSite() {
+  const facing = walking ? lookYaw : yaw;
+  const here = actor().position;
+  return (
+    pickIncidentSite(populationRoads, here.x, here.z, facing) ||
+    nearestRoadSite(populationRoads, here.x, here.z, 40)
+  );
+}
+function startIncident(spec) {
+  const site = incidentSite();
+  if (!site) {
+    releaseIncident(cityLife, spec.id);
+    return null;
+  }
+  const stagger = liveIncidents.length * 26;
+  const shift = stagger / Math.max(site.segment.length || 1, 1);
+  const t = Math.max(0.12, Math.min(0.88, site.t + (site.t < 0.5 ? shift : -shift)));
+  const frame = roadFrame(site.segment, t);
+  const side = 1;
+  const live = {
+    id: spec.id,
+    kind: spec.id,
+    left: spec.duration,
+    meshes: [],
+    agents: [],
+    lamps: [],
+    agent: null,
+  };
+  if (spec.id === "stalled-vehicle") {
+    const agent = parkIncidentVehicle(
+      "car",
+      frame,
+      laneLateral(site.segment, "car", side),
+      spec.id,
+      0,
+    );
+    live.agents.push(agent);
+    live.lamps.push(
+      ...hazardLamps(agent.mesh, [
+        [-0.62, 0.7, -1.82],
+        [0.62, 0.7, -1.82],
+        [-0.62, 0.55, 1.88],
+        [0.62, 0.55, 1.88],
+      ]),
+    );
+  } else if (spec.id === "roadside-breakdown") {
+    const lateral = Math.sign(side) * ((site.segment.width || 8) / 2 + 0.4);
+    const agent = parkIncidentVehicle("motorcycle", frame, lateral, spec.id, 0.55);
+    live.agent = agent;
+    live.agents.push(agent);
+    live.lamps.push(
+      ...hazardLamps(agent.mesh, [
+        [-0.16, 0.86, -0.8],
+        [0.16, 0.86, -0.8],
+        [-0.12, 0.48, 0.72],
+        [0.12, 0.48, 0.72],
+      ]),
+    );
+    const marker = warningMarker();
+    const behind = pointFromFrame(frame, -1.6, lateral);
+    marker.position.x = behind[0];
+    marker.position.z = behind[1];
+    marker.rotation.y = frame.yaw;
+    scene.add(marker);
+    live.meshes.push(marker);
+  } else {
+    const lateral = sidewalkLateral(site.segment, side);
+    const stall = makeTeaStall();
+    const at = pointFromFrame(frame, 0, lateral);
+    stall.position.set(at[0], 0, at[1]);
+    stall.rotation.y = frame.yaw;
+    scene.add(stall);
+    live.meshes.push(stall);
+    streetProps.push({ x: at[0], z: at[1], radius: 0.95, incidentId: spec.id });
+    for (const spot of crowdRing(spec.crowd || 6)) {
+      const placed = pointFromFrame(frame, spot.along, lateral + spot.out);
+      const dx = at[0] - placed[0];
+      const dz = at[1] - placed[1];
+      live.agents.push(
+        standPerson(nextPedIndex++, placed[0], placed[1], Math.atan2(-dx, -dz), spec.id),
+      );
+    }
+  }
+  liveIncidents.push(live);
+  toast(spec.notice);
+  return live;
+}
+function finishIncident(index) {
+  const live = liveIncidents[index];
+  if (!live) return;
+  for (const mesh of live.meshes) scene.remove(mesh);
+  for (const agent of live.agents) {
+    scene.remove(agent.mesh);
+    const peopleAt = pedestrians.indexOf(agent);
+    if (peopleAt >= 0) pedestrians.splice(peopleAt, 1);
+    const trafficAt = traffic.indexOf(agent);
+    if (trafficAt >= 0) traffic.splice(trafficAt, 1);
+  }
+  for (let i = streetProps.length - 1; i >= 0; i--) {
+    if (streetProps[i].incidentId === live.id) streetProps.splice(i, 1);
+  }
+  releaseIncident(cityLife, live.id);
+  liveIncidents.splice(index, 1);
+}
+function tickIncidents(dt) {
+  const due = tickSchedule(cityLife, dt, { playing: true });
+  if (due) startIncident(due);
+  for (let i = liveIncidents.length - 1; i >= 0; i--) {
+    const live = liveIncidents[i];
+    live.left -= dt;
+    const blink = Math.floor(elapsed * 3.2) % 2 === 0;
+    for (const lamp of live.lamps)
+      lamp.material.emissiveIntensity = blink ? 2.5 : 0.05;
+    if (live.agent) emitSmoke(live.agent.mesh, 3.4, dt, live.agent);
+    if (live.left <= 0) finishIncident(i);
+  }
+}
+function cheatOpen() {
+  const bar = $("cheat-bar");
+  return Boolean(bar && !bar.hidden);
+}
+function openCheat() {
+  const bar = $("cheat-bar");
+  if (!bar) return;
+  keys.clear();
+  releaseLook();
+  bar.hidden = false;
+  $("cheat-line").value = "";
+  $("cheat-line").focus();
+}
+function closeCheat() {
+  const bar = $("cheat-bar");
+  if (!bar) return;
+  bar.hidden = true;
+  $("cheat-line").blur();
+  $("world").focus();
+}
+function submitCheat(raw) {
+  const match = matchCheat(raw);
+  if (!match) {
+    toast("That word does nothing.");
+    if ($("cheat-line")) $("cheat-line").value = "";
+    return null;
+  }
+  let added = 0;
+  if (match.effect === "pedestrians") added = spawnPedestrianBoost();
+  else if (match.effect === "traffic") added = spawnTrafficBoost();
+  else applyCityWeather(nextWeather(weatherName));
+  toast(cheatNotice(match.effect, weatherName, added));
+  closeCheat();
+  return { ...match, added, weather: weatherName };
+}
+const cheatForm = $("cheat-bar");
+if (cheatForm) {
+  cheatForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitCheat($("cheat-line").value);
+  });
+}
 function action(key) {
   if (key === "p" && active) {
     paused = !paused;
@@ -1214,6 +1733,18 @@ function action(key) {
   if (key === " " && walking && !blocksDriving(mapView) && avatar.position.y <= 0.05)
     jumpQueued = true;
 }
+window.addEventListener(
+  "keydown",
+  (event) => {
+    if (event.key !== "`" && event.key !== "~" && event.code !== "Backquote") return;
+    if (!active || $("instructions").open) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (cheatOpen()) closeCheat();
+    else openCheat();
+  },
+  true,
+);
 window.addEventListener("keydown", (e) => {
   if (
     ["INPUT", "SELECT"].includes(e.target.tagName) ||
@@ -1313,12 +1844,7 @@ $("help").onclick = () => {
 };
 $("close-help").onclick = $("resume").onclick = () => $("instructions").close();
 $("lighting").onclick = () => {
-  night = !night;
-  $("lighting").textContent = night ? "BLUE HOUR" : "GOLDEN HOUR";
-  scene.background.set(night ? 0x526675 : 0xc6c8ac);
-  scene.fog.color.copy(scene.background);
-  sun.intensity = night ? 0.4 : 3.5;
-  hemi.intensity = night ? 1 : 2.3;
+  applyCityWeather(night ? "clear" : "blue-hour");
 };
 for (const b of document.querySelectorAll("[data-key]")) {
   b.onpointerdown = (e) => {
@@ -1563,8 +2089,8 @@ function drawMap() {
     }
   }
   if (mapLayers.traffic) {
-    map.fillStyle = "#f4f7f2";
     for (const t of traffic) {
+      map.fillStyle = t.incident ? "#e07a3d" : "#f4f7f2";
       const x = t.mesh.position.x;
       const z = t.mesh.position.z;
       if (!visible(x, z)) continue;
@@ -1652,8 +2178,10 @@ function animate() {
   const dt = Math.min((now - previousTime) / 1000, 0.05);
   previousTime = now;
   const running = active && !paused && !$("instructions").open;
+  tickRain(dt);
   if (running) {
     elapsed += dt;
+    tickIncidents(dt);
     const drive = !blocksDriving(mapView);
     const p = actor().position;
     if (walking) {
@@ -1815,6 +2343,11 @@ function animate() {
             z: other.z,
             radius: bodyRadius(other.kind),
           })),
+        ...streetProps.map((prop) => ({
+          x: prop.x,
+          z: prop.z,
+          radius: prop.radius,
+        })),
         walking
           ? { x: avatar.position.x, z: avatar.position.z, radius: 0.45 }
           : { x: player.position.x, z: player.position.z, radius: bodyRadius("player-car") },
@@ -1871,6 +2404,13 @@ function animate() {
       }
     }
     for (const ped of pedestrians) {
+      if (ped.hold && !ped.down) {
+        const bob = Math.sin(elapsed * 1.6 + (ped.phase || 0)) * 0.02;
+        ped.mesh.position.set(ped.x || 0, bob, ped.z || 0);
+        ped.mesh.rotation.y = ped.yaw || 0;
+        ped.mesh.userData.walk?.(0, 0);
+        continue;
+      }
       if (ped.down && resumeWalking(ped, elapsed)) {
         ped.down = false;
         ped.downUntil = null;
@@ -1883,11 +2423,18 @@ function animate() {
       }
       if (ped.points) {
         const probe = advanceAlong(ped, dt);
-        const bodies = traffic.map((t) => ({
-          x: t.x,
-          z: t.z,
-          radius: bodyRadius(t.kind),
-        }));
+        const bodies = [
+          ...traffic.map((t) => ({
+            x: t.x,
+            z: t.z,
+            radius: bodyRadius(t.kind),
+          })),
+          ...streetProps.map((prop) => ({
+            x: prop.x,
+            z: prop.z,
+            radius: prop.radius,
+          })),
+        ];
         for (const other of pedestrians) {
           if (other !== ped) bodies.push({ x: other.x, z: other.z, radius: 0.45 });
         }
@@ -2082,8 +2629,18 @@ window.__pune = {
       y: avatar.position.y,
       jumpQueued,
       running: walking && keys.has("shift"),
-      motorcycles: traffic.filter((t) => t.kind === "motorcycle").length,
-      cars: traffic.filter((t) => t.kind === "car").length,
+      motorcycles: traffic.filter((t) => t.kind === "motorcycle" && !t.incident).length,
+      cars: traffic.filter((t) => t.kind === "car" && !t.incident).length,
+      pedestrians: pedestrians.filter((ped) => !ped.incident).length,
+      weather: weatherName,
+      incidents: liveIncidents.map((item) => ({
+        id: item.id,
+        people: item.agents.filter((agent) => agent.kind === "person").length,
+        vehicles: item.agents
+          .filter((agent) => agent.kind !== "person")
+          .map((agent) => agent.kind),
+      })),
+      cheatOpen: cheatOpen(),
       places: (city.places || []).map((place) => ({
         name: place.name,
         kind: place.kind,
@@ -2104,6 +2661,38 @@ window.__pune = {
     };
   },
   debug: {
+    cheat(word) {
+      return submitCheat(word);
+    },
+    incident(id) {
+      const spec = INCIDENTS.find((item) => item.id === id);
+      if (!spec) return null;
+      if (cityLife.active.has(id)) return id;
+      cityLife.active.add(id);
+      cityLife.seen.add(id);
+      const live = startIncident(spec);
+      if (!live) releaseIncident(cityLife, id);
+      return live ? live.id : null;
+    },
+    focusIncident(id) {
+      const live = id
+        ? liveIncidents.find((item) => item.id === id)
+        : liveIncidents[0];
+      if (!live) return null;
+      const agent = live.agents[0];
+      const x = agent?.x ?? live.meshes[0]?.position.x ?? 0;
+      const z = agent?.z ?? live.meshes[0]?.position.z ?? 0;
+      const face = agent?.yaw ?? live.meshes[0]?.rotation.y ?? yaw;
+      walking = false;
+      avatar.visible = false;
+      player.visible = true;
+      player.position.set(x + Math.sin(face) * 9, 0, z + Math.cos(face) * 9);
+      yaw = face;
+      lookYaw = face;
+      lookPitch = 0.22;
+      speed = 0;
+      return { id: live.id, x, z };
+    },
     armCrash() {
       const car = traffic.find((agent) => agent.kind === "car" && agent.points);
       const ped = pedestrians.find((person) => !person.down);

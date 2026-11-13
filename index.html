@@ -46,6 +46,16 @@
       <button id="reset">↺ &nbsp; Return to Deccan</button>
     </aside>
     <div id="toast" role="status" aria-live="polite"></div>
+    <form id="cheat-bar" hidden>
+      <label for="cheat-line">CHEAT</label>
+      <input
+        id="cheat-line"
+        autocomplete="off"
+        spellcheck="false"
+        maxlength="24"
+        aria-label="Cheat word"
+      />
+    </form>
     <div id="dialogue" role="status" hidden></div>
     <footer>
       <section class="map-panel" id="map-panel">
@@ -88,7 +98,7 @@
         <div class="speed"><span id="speed">00</span><small>KM/H</small></div>
         <div class="speed-track"><i id="speed-bar"></i></div>
         <div class="gear">
-          <span id="gear">N</span><b id="time">17:42</b><span>24°C</span>
+          <span id="gear">N</span><b id="time">17:42</b><span id="temp">24°C</span>
         </div>
       </section>
       <section class="controls-bar">
@@ -98,7 +108,7 @@
         </div>
         <div>
           <kbd>C</kbd> CAMERA <kbd>H</kbd> HORN <kbd>T</kbd> TALK
-          <kbd>P</kbd> PAUSE
+          <kbd>P</kbd> PAUSE <kbd>~</kbd> CHEAT
         </div>
         <div class="settings">
           <button id="audio">SOUND OFF</button
@@ -126,7 +136,12 @@
         the car the camera follows the car. Esc releases the pointer. Shift
         runs and Space jumps on foot; Space brakes in the car. E gets out
         of the car when stopped; return nearby to get in. C changes the camera.
-        H honks. T speaks with a nearby pedestrian. F picks up a pipe, a
+        H honks. T speaks with a nearby pedestrian. Press ~ and type a
+        cheat word: bazaar brings more people onto the footpath, rushhour
+        fills the roads, and monsoon changes the weather. While you are
+        out, a car can stall in the lane, a small crowd can gather at a
+        tea stall, or a scooter can break down at the side of the road.
+        F picks up a pipe, a
         stick, or a stone on the pavement and swings it. P pauses. Cars stop
         for people. The map can be
         minimized or expanded. Drag the expanded map to move across Kothrud,

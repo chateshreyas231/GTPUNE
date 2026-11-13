@@ -22,6 +22,8 @@ PORT=3001 npm start
 - C: cycle chase, close and overhead cameras.
 - H: horn; enable sound with the SOUND button first.
 - T: talk to a pedestrian within 22 m. Select Marathi, Hindi or English.
+- ~ : cheat line. `bazaar` adds pedestrians, `rushhour` adds traffic, and `monsoon` cycles the weather (drizzle, monsoon rain, blue hour, clear).
+- While you play, the city can stall a car in the lane, gather a small crowd at a tea stall, or leave a scooter broken down at the side of the road.
 - J / START DABBA DELIVERY: begin a timed ₹450 delivery. Stop at the marker, get out and press F to collect; repeat at FC Road to deliver. Completion saves the wallet locally.
 - 4K PHOTO: export a 3840 × 2160 scene PNG; normal rendering remains sized for your screen.
 - P: pause. The game also pauses on a hidden tab.
