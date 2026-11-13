@@ -441,19 +441,22 @@ for (const r of roadSegments)
     adjacency.get(key).push(r);
   }
 const traffic = [];
-for (let i = 0; i < 24; i++) {
-  const r = populationRoads[(i * 11) % populationRoads.length];
-  if (r.length < 30) continue;
+const driveable = roadSegments.filter((r) => r.length > 45);
+const trafficRoads = driveable.length ? driveable : roadSegments;
+const trafficTarget = Math.min(96, Math.max(48, trafficRoads.length));
+for (let i = 0; i < trafficTarget; i++) {
+  const r = trafficRoads[(i * 97) % trafficRoads.length];
   const m = makeCar(
-    [0xa7b7b3, 0xe3dac4, 0x678e92, 0xa4523f][i % 4],
-    i % 4 === 0,
+    [0xa7b7b3, 0xe3dac4, 0x678e92, 0xa4523f, 0xd7c4a2, 0x6e8b74][i % 6],
+    i % 5 === 0,
   );
   scene.add(m);
   traffic.push({
     mesh: m,
     road: r,
-    t: (i * 0.173) % 1,
+    t: (i * 0.137) % 1,
     direction: i % 2 ? 1 : -1,
+    speed: 6.5 + (i % 7) * 1.15,
   });
 }
 let detailedHumans = 0;
@@ -775,45 +778,196 @@ if (city.source === "OpenStreetMap") {
   link.style.color = "inherit";
   $("map-source").replaceChildren(link);
 }
-const map = $("map").getContext("2d");
+const mapCanvas = $("map");
+const map = mapCanvas.getContext("2d");
+const mapLayers = {
+  roads: true,
+  buildings: true,
+  traffic: true,
+  people: true,
+  places: true,
+};
+let mapZoom = 1;
+let mapSize = "dock";
+try {
+  const savedLayers = JSON.parse(localStorage.getItem("pune-map-layers") || "{}");
+  Object.assign(mapLayers, savedLayers);
+  mapZoom = Number(localStorage.getItem("pune-map-zoom")) || 1;
+  mapSize = localStorage.getItem("pune-map-size") || "dock";
+} catch {}
+mapZoom = Math.min(4, Math.max(0.45, mapZoom));
+for (const name of Object.keys(mapLayers)) {
+  const box = $(`layer-${name}`);
+  if (box) box.checked = mapLayers[name] !== false;
+}
+function saveMap() {
+  try {
+    localStorage.setItem("pune-map-layers", JSON.stringify(mapLayers));
+    localStorage.setItem("pune-map-zoom", String(mapZoom));
+    localStorage.setItem("pune-map-size", mapSize);
+  } catch {}
+}
+function applyMapSize() {
+  const panel = $("map-panel");
+  panel.classList.toggle("is-min", mapSize === "min");
+  panel.classList.toggle("is-max", mapSize === "max");
+  $("map-size").textContent = mapSize === "max" ? "DOCK" : "EXPAND";
+  $("map-min").textContent = mapSize === "min" ? "MAP" : "MIN";
+  requestAnimationFrame(resizeMap);
+}
+function resizeMap() {
+  if (mapSize === "min") return;
+  const rect = mapCanvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  mapCanvas.width = Math.max(280, Math.floor(rect.width * dpr));
+  mapCanvas.height = Math.max(160, Math.floor(rect.height * dpr));
+}
+$("map-zoom-in").onclick = () => {
+  mapZoom = Math.min(4, mapZoom * 1.25);
+  saveMap();
+};
+$("map-zoom-out").onclick = () => {
+  mapZoom = Math.max(0.45, mapZoom / 1.25);
+  saveMap();
+};
+$("map-size").onclick = () => {
+  mapSize = mapSize === "max" ? "dock" : "max";
+  applyMapSize();
+  saveMap();
+};
+$("map-min").onclick = () => {
+  mapSize = mapSize === "min" ? "dock" : "min";
+  applyMapSize();
+  saveMap();
+};
+for (const name of Object.keys(mapLayers)) {
+  const box = $(`layer-${name}`);
+  if (!box) continue;
+  box.onchange = () => {
+    mapLayers[name] = box.checked;
+    saveMap();
+  };
+}
+applyMapSize();
+window.addEventListener("resize", resizeMap);
 function drawMap() {
+  if (mapSize === "min") return;
+  const w = mapCanvas.width;
+  const h = mapCanvas.height;
   const pos = actor().position;
+  map.setTransform(1, 0, 0, 1, 0, 0);
   map.fillStyle = "#163b33";
-  map.fillRect(0, 0, 260, 170);
-  const scale = 0.16,
-    ox = 130 - pos.x * scale,
-    oz = 85 - pos.z * scale;
-  map.strokeStyle = "#547467";
-  for (const r of city.roads) {
-    map.lineWidth = Math.max(1, r.width * scale);
-    map.beginPath();
-    r.points.forEach((p, i) =>
-      i
-        ? map.lineTo(ox + p[0] * scale, oz + p[1] * scale)
-        : map.moveTo(ox + p[0] * scale, oz + p[1] * scale),
-    );
-    map.stroke();
+  map.fillRect(0, 0, w, h);
+  const scale = (mapSize === "max" ? 0.28 : 0.18) * mapZoom * (w / 520);
+  const ox = w / 2 - pos.x * scale;
+  const oz = h / 2 - pos.z * scale;
+  const reach = Math.hypot(w, h) / scale + 80;
+  const sx = (x) => ox + x * scale;
+  const sy = (z) => oz + z * scale;
+  const visible = (x, z) => {
+    const px = sx(x);
+    const py = sy(z);
+    return px > -30 && py > -30 && px < w + 30 && py < h + 30;
+  };
+  if (mapLayers.buildings) {
+    map.fillStyle = "rgba(214, 206, 176, 0.28)";
+    for (const b of city.buildings) {
+      const p0 = b.points[0];
+      if (Math.abs(p0[0] - pos.x) > reach || Math.abs(p0[1] - pos.z) > reach)
+        continue;
+      map.beginPath();
+      b.points.forEach((p, i) =>
+        i ? map.lineTo(sx(p[0]), sy(p[1])) : map.moveTo(sx(p[0]), sy(p[1])),
+      );
+      map.closePath();
+      map.fill();
+    }
   }
-  map.fillStyle = "#d8b16b";
-  const target = city.stops[Math.min(targetIndex, 2)].point;
-  map.beginPath();
-  map.arc(
-    Math.max(8, Math.min(252, ox + target[0] * scale)),
-    Math.max(8, Math.min(162, oz + target[1] * scale)),
-    4,
-    0,
-    Math.PI * 2,
-  );
-  map.fill();
+  if (mapLayers.roads) {
+    map.strokeStyle = "#6d8f7c";
+    map.lineCap = "round";
+    const viewMinX = pos.x - reach;
+    const viewMaxX = pos.x + reach;
+    const viewMinZ = pos.z - reach;
+    const viewMaxZ = pos.z + reach;
+    for (const r of city.roads) {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      for (const p of r.points) {
+        minX = Math.min(minX, p[0]);
+        maxX = Math.max(maxX, p[0]);
+        minZ = Math.min(minZ, p[1]);
+        maxZ = Math.max(maxZ, p[1]);
+      }
+      if (maxX < viewMinX || minX > viewMaxX || maxZ < viewMinZ || minZ > viewMaxZ)
+        continue;
+      map.lineWidth = Math.max(1.2, r.width * scale * 0.35);
+      map.beginPath();
+      r.points.forEach((p, i) =>
+        i ? map.lineTo(sx(p[0]), sy(p[1])) : map.moveTo(sx(p[0]), sy(p[1])),
+      );
+      map.stroke();
+    }
+  }
+  if (mapLayers.traffic) {
+    map.fillStyle = "#f4f7f2";
+    for (const t of traffic) {
+      const x = t.mesh.position.x;
+      const z = t.mesh.position.z;
+      if (!visible(x, z)) continue;
+      map.save();
+      map.translate(sx(x), sy(z));
+      map.rotate(-t.mesh.rotation.y);
+      map.fillRect(-3.5, -2, 7, 4);
+      map.restore();
+    }
+  }
+  if (walking) {
+    map.save();
+    map.translate(sx(player.position.x), sy(player.position.z));
+    map.fillStyle = "#c4b48a";
+    map.fillRect(-4, -2.5, 8, 5);
+    map.restore();
+  }
+  if (mapLayers.people) {
+    map.fillStyle = "#7dcea0";
+    for (const person of pedestrians) {
+      const x = person.mesh.position.x;
+      const z = person.mesh.position.z;
+      if (!visible(x, z)) continue;
+      map.beginPath();
+      map.arc(sx(x), sy(z), 2.4, 0, Math.PI * 2);
+      map.fill();
+    }
+  }
+  if (mapLayers.places) {
+    city.stops.forEach((stop, index) => {
+      const current = index === Math.min(targetIndex, city.stops.length - 1);
+      map.fillStyle = current ? "#edbd6d" : "#8d7350";
+      map.beginPath();
+      map.arc(sx(stop.point[0]), sy(stop.point[1]), current ? 6 : 4, 0, Math.PI * 2);
+      map.fill();
+      if (mapSize === "max" || current) {
+        map.fillStyle = "#f6f3e6";
+        map.font = `${Math.max(11, w / 48)}px sans-serif`;
+        map.fillText(stop.name, sx(stop.point[0]) + 8, sy(stop.point[1]) - 6);
+      }
+    });
+  }
+  map.fillStyle = "rgba(246, 243, 230, 0.85)";
+  map.font = `${Math.max(12, w / 40)}px sans-serif`;
+  map.fillText("N", w / 2 - 4, 18);
   map.save();
-  map.translate(130, 85);
+  map.translate(w / 2, h / 2);
   map.rotate(-yaw);
   map.fillStyle = "#f2e5b7";
   map.beginPath();
-  map.moveTo(0, -7);
-  map.lineTo(-5, 6);
+  map.moveTo(0, -9);
+  map.lineTo(-6, 7);
   map.lineTo(0, 3);
-  map.lineTo(5, 6);
+  map.lineTo(6, 7);
   map.closePath();
   map.fill();
   map.restore();
@@ -877,7 +1031,7 @@ function animate() {
       const old = t.t,
         oldRoad = t.road,
         oldDirection = t.direction;
-      t.t += (dt * 8) / t.road.length;
+      t.t += (dt * (t.speed || 8)) / t.road.length;
       if (t.t > 1) {
         const endpoint = t.direction === 1 ? t.road.b : t.road.a;
         const exits = (adjacency.get(nodeKey(endpoint)) || []).filter(
