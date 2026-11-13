@@ -4,25 +4,29 @@
 
 `public/assets/materials/asphalt.jpg` and `plaster.jpg` are the 1K diffuse textures for Poly Haven's `asphalt_02` and `concrete_wall_006`. Poly Haven publishes its assets under CC0: https://polyhaven.com/license. Facade windows are original procedural overlays on the plaster material. These textures are general materials and do not reproduce a particular FC Road facade.
 
-## Playable girl, boy, and man
+## Original Blender cars and people
 
-The player starts as Ananya. V cycles the selectable characters Ananya (girl), Kabir (boy), and Nikhil (man). These are stylized clothed Quaternius rigs, not photorealistic local residents.
+The active player and ordinary residents now use original Blender models in `public/assets/pune-originals/`. Editable `.blend` sources, separate named parts, body control cages and armatures are in `assets/blender/`. The native sources preserve editable parts; GLBs merge surfaces by material to reduce draw calls. The manifest binds both source and delivery files with SHA-256 hashes, actual triangle counts, byte sizes and measured bounding dimensions. Width includes mirrors; height/length include attached trim.
 
-| File       | Selectable label | Rendered height | Source pack                                |
-| ---------- | ---------------- | --------------- | ------------------------------------------ |
-| `girl.glb` | Ananya / girl    | 1.62 m          | Ultimate Modular Women, Casual             |
-| `boy.glb`  | Kabir / boy      | 1.50 m          | Ultimate Modular Characters, Casual Hoodie |
-| `man.glb`  | Nikhil / man     | 1.76 m          | Ultimate Modular Characters, Casual 2      |
+| Car | Photo interpretation | Spawn code |
+| --- | --- | --- |
+| Deccan Supercar | Red low mid-engine-style supercar | `SUPERGT` |
+| Heritage GT | Silver long-hood vintage racer, number 4 | `HERITAGEGT` |
+| Sahyadri SUV | Grey SUV with black roof and rear spoiler | `SAHYADRI` |
+| Deccan Muscle | Red muscle coupe | `MUSCLEGT` |
+| Sunset Cabrio | Yellow open-top muscle car | `SUNSET` |
 
-Quaternius publishes these packs under CC0 1.0. Sources: https://quaternius.com/packs/ultimatemodularwomen.html and https://quaternius.com/packs/ultimatemodularcharacters.html. The file called `boy.glb` is an adult-pack casual hoodie male model scaled shorter; it is not a purpose-built anatomical child scan. The names and ages implied by the selectable labels are fictional. The game recolors skin, hair and clothing; its Idle, Walk and Run clips come from the source rig. The license note is retained in `public/assets/characters/LICENSE-QUATERNIUS.txt`.
+These are original approximate interpretations of the five photographs supplied in chat, with inferred unseen sides, interiors and dimensions. They carry no manufacturer badges, copied photograph textures or extracted game assets. They are not manufacturer CAD replicas. Each car has four independent wheel pivots, modeled tire/rim/brake assemblies, formed body panels, wheel arches, window/pillar geometry, panel seams, lamps and an interior. Doors do not open, interiors are simplified, glass uses an opaque reflective material and there are no damage meshes or LOD transitions yet. Cars have approximately 23,000 triangles each, under 0.9 MB per GLB. Five designs enter the ordinary traffic rotation; the player starts in the supercar. Horn/engine audio remains synthesized.
 
-## Adult street residents
+Three original clothed adult models replace the active Quaternius cast: `pune-woman`, `pune-man`, `pune-young-adult`. Faces include modeled eyelids, eyes/irises, nose, lips, ears and hair; hands have separate fingers, clothing has collars/buttons and shoe soles. Each has a 15-bone deforming rig with original Idle, Walk, Run, Punch_Left, Punch_Right and Sword_Slash clips. They have 14,020–14,628 triangles each and GLBs under 0.7 MB. They are stylized modeled humans, not photorealistic scans or a claim of Rockstar production quality. The female variant wears a long shirt; it does not reproduce all role-specific saree/kurta garments. Officer/construction/bike-rider procedural meshes are still separate.
 
-Street pedestrians use these GLB files in `public/assets/characters/`:
+V retains the existing player labels and rendered heights: Ananya/girl 1.62 m, Kabir/boy 1.50 m, Nikhil/man 1.76 m. All source meshes have adult proportions; the shortened Kabir model is not an anatomical child model. Ordinary residents use the new rigs at 1.72 m with role-dependent skin and clothing colors. No real person's likeness was used.
 
-- `casual-male.glb`, `casual-female.glb`, `casual2-male.glb`, `casual2-female.glb`, `casual-bald.glb`, `worker-male.glb`, `old-classy-female.glb`
+Original model geometry/materials/animations are dedicated under CC0 1.0; see `public/assets/pune-originals/LICENSE.txt`. Reference photographs and vehicle trademarks are not included in this dedication. No paid providers were used. The optional `game-dev` CLI is unavailable in this environment, so authoring, validation and export use Blender 4.3.2 directly rather than claiming a CLI package/admission receipt.
 
-They come from the Ultimate Animated Character pack by Quaternius, as uploaded by Quaternius on OpenGameArt: https://opengameart.org/content/animated-characters-pack . The submission lists the license as CC0 and links to https://creativecommons.org/publicdomain/zero/1.0/ . The game keeps the Idle and Walk clips, scales the rigs to about 1.72 m, and recolors the named Skin, Face, Shirt, Pants, Hair, Hat, Vest, Detail and Belt materials. Wheatish skin stays between `#C89870` and `#E8C4A2`. The Mixamo Michelle reference is not shipped.
+Rebuild with Blender installed: `npm run assets:build`. This intentionally rewrites the eight generated sources, GLBs, preview images and manifest. Read-only native validation: `npm run assets:check`. `npm test` verifies delivery/source hashes, embedded-only buffers, wheel pivots, skinning, named clips and geometry budgets. Playwright checks actual browser loading, car spawn/entry/driving, character changes and fighting. Preview renders are `assets/blender/vehicles-preview.png` and `people-preview.png`; matching front/side/top car silhouettes are also included.
+
+The earlier Quaternius files in `public/assets/characters/` remain as legacy assets with their CC0 provenance/license. They are no longer the active ordinary player/resident library. Sources: https://quaternius.com/packs/ultimatemodularwomen.html , https://quaternius.com/packs/ultimatemodularcharacters.html , https://opengameart.org/content/animated-characters-pack .
 
 ## Voices
 

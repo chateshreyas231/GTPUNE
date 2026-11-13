@@ -57,7 +57,8 @@ test("the default player is the girl, then the boy, then the man", () => {
   assert.ok(girl.materials.Skin >= 0xc89870 && girl.materials.Skin <= 0xe8c4a2);
   for (const look of PLAYER_LOOKS) {
     assert.equal(look.license, "CC0-1.0");
-    assert.match(look.source, /^https:\/\/quaternius\.com\//);
+    assert.match(look.source, /^assets\/blender\/pune-.*\.blend$/);
+    assert.equal(existsSync(look.source), true);
     assert.equal(
       existsSync(fileURLToPath(new URL(`../public${look.file}`, import.meta.url))),
       true,

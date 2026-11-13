@@ -15,6 +15,8 @@
     "preview": "vite preview --host 0.0.0.0",
     "test:browser": "playwright test",
     "map:fetch": "node scripts/fetch-map.mjs",
+    "assets:build": "blender -b --python-exit-code 1 --python scripts/build-blender-assets.py -- --render",
+    "assets:check": "blender -b --python-exit-code 1 --python scripts/check-blender-sources.py",
     "prestart": "npm run build",
     "pretest": "npm run build"
   },

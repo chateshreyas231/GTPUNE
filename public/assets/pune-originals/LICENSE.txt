@@ -1,0 +1,14 @@
+GTPUNE original Blender models — CC0 1.0 Universal
+
+To the extent possible under law, the GTPUNE contributors waive copyright and
+related rights in the original model geometry, materials and animations in this
+directory and their editable sources in assets/blender/ under CC0 1.0:
+https://creativecommons.org/publicdomain/zero/1.0/
+
+These fictional designs are approximations inspired by five user-supplied car
+photographs. The photographs, manufacturer logos and trademarks are not included
+and are not covered by this dedication. The models are not manufacturer CAD,
+licensed branded replicas, human scans or assets extracted from another game.
+Hidden geometry, dimensions, interiors and motion are original interpretations.
+
+The manifest binds exported GLBs and editable Blender files with SHA-256 hashes.

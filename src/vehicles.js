@@ -1,13 +1,22 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { REFERENCE_CARS, attachVehicleAsset } from "./vehicle-assets.js";
 
 // Two-wheelers outnumber cars by 4 to 1. Bodies are original meshes.
 export const STREET_FLEET = { cars: 12, motorcycles: 48 };
 
-export const CAR_BODIES = ["compact-suv", "boxy-offroader", "tall-suv"];
+export const CAR_BODIES = [
+  "compact-suv",
+  "boxy-offroader",
+  "tall-suv",
+  ...Object.keys(REFERENCE_CARS),
+];
 export const BIKE_BODIES = ["scooter", "scooter-apron", "moped", "geared-bike"];
 
 export const BODY_LABELS = {
+  ...Object.fromEntries(
+    Object.entries(REFERENCE_CARS).map(([id, spec]) => [id, spec.label]),
+  ),
   "compact-suv": "Compact SUV",
   "boxy-offroader": "Boxy Off-roader",
   "tall-suv": "Tall SUV",
@@ -137,6 +146,14 @@ export const VEHICLE_TONES = {
     filter: 120,
   },
 };
+
+for (const [index, body] of Object.keys(REFERENCE_CARS).entries()) {
+  VEHICLE_TONES[body] = {
+    ...VEHICLE_TONES[body === "sahyadri-suv" ? "tall-suv" : "compact-suv"],
+    engineBase: 63 + index * 7,
+    hornFreq: 370 + index * 29,
+  };
+}
 
 export function fleetBody(index) {
   if (index < STREET_FLEET.motorcycles)
@@ -675,6 +692,11 @@ function fireEngine() {
 }
 
 export function makeVehicle(body, color = 0xe5d6ae) {
+  if (REFERENCE_CARS[body]) {
+    const root = compactSuv(REFERENCE_CARS[body].color);
+    finish(root, body, [0.6, 0.36, 2.45]);
+    return attachVehicleAsset(root, body);
+  }
   if (body === "compact-suv") return compactSuv(color);
   if (body === "boxy-offroader") return boxyOffroader(color);
   if (body === "tall-suv") return tallSuv(color);

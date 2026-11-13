@@ -52,6 +52,11 @@ const ALLOWED = new Set([
   "Police Sedan",
   "Ambulance",
   "Fire Engine",
+  "Deccan Supercar",
+  "Heritage GT",
+  "Sahyadri SUV",
+  "Deccan Muscle",
+  "Sunset Cabrio",
 ]);
 
 function crossRoads() {

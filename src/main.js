@@ -1,6 +1,11 @@
 import { loadProgress, saveProgress } from "./progress.js";
 import { createLaw, reportCrime, tickLaw } from "./law.js";
 import {
+  REFERENCE_CARS,
+  prepareVehicleAssets,
+  vehicleAssetStatus,
+} from "./vehicle-assets.js";
+import {
   fcRoadFacadeProfile,
   drawReferenceFacade,
 } from "./facade-reference.js";
@@ -856,7 +861,7 @@ const spawnRoad = roadSegments.reduce((a, b) =>
     : b,
 );
 const spawnHeading = city.source === "OpenStreetMap" ? spawnRoad.angle : 0;
-let player = makeVehicle("compact-suv", 0xe5d6ae);
+let player = makeVehicle("deccan-supercar");
 player.rotation.y = spawnHeading;
 scene.add(player);
 player.position.set(city.spawn[0], 0, city.spawn[1]);
@@ -1455,6 +1460,7 @@ Promise.all([
   })
   .catch((e) => console.warn("Human asset fallback", e))
   .finally(dressSmokers);
+prepareVehicleAssets().catch((e) => console.warn("Vehicle asset fallback", e));
 let job = null,
   wallet = 0;
 try {
@@ -2125,7 +2131,7 @@ function spawnRide(kind) {
       ? makePanzer()
       : kind === "armor"
         ? makeArmoredCarrier()
-        : makeVehicle("compact-suv", 0xc96b4a);
+        : makeVehicle(REFERENCE_CARS[kind] ? kind : "compact-suv", 0xc96b4a);
   mesh.position.set(spot.x, 0, spot.z);
   mesh.rotation.y = spot.yaw;
   scene.add(mesh);
@@ -2135,6 +2141,14 @@ function spawnRide(kind) {
 }
 function applyActionCheat(text) {
   const code = String(text).trim().toUpperCase();
+  const reference = Object.entries(REFERENCE_CARS).find(
+    ([, spec]) => spec.cheat === code,
+  );
+  if (reference) {
+    spawnRide(reference[0]);
+    toast(`${reference[1].label} parked nearby. E enters; WASD drives.`);
+    return reference[0];
+  }
   if (code === "PANZER") {
     spawnRide("panzer");
     toast(
@@ -2208,9 +2222,6 @@ function openCheat() {
   $("cheat-box").hidden = false;
   $("cheat-code").value = "";
   $("cheat-code").focus();
-  requestAnimationFrame(() => {
-    if (cheatVisible) $("cheat-code").value = "";
-  });
 }
 function closeCheat() {
   cheatVisible = false;
@@ -3844,6 +3855,9 @@ if (cheatHelp) {
   };
   cheatHelp.textContent = Object.entries(CHEAT_WORDS)
     .map(([word, effect]) => `${word} (${labels[effect]})`)
+    .concat(
+      Object.values(REFERENCE_CARS).map((car) => `${car.cheat} (${car.label})`),
+    )
     .join(" · ");
 }
 paintHealth();
@@ -3865,6 +3879,12 @@ window.__pune = {
       roads: city.roads.length,
       buildings: city.buildings.length,
       detailedHumans,
+      vehicleAssets: vehicleAssetStatus(),
+      playerVehicle: {
+        body: player.userData.body,
+        ready: Boolean(player.userData.assetReady),
+        wheels: player.userData.wheels?.length || 0,
+      },
       humanHeight: new THREE.Box3()
         .setFromObject(avatar)
         .getSize(new THREE.Vector3()).y,
@@ -3923,6 +3943,7 @@ window.__pune = {
       owned: [...loadout.owned],
       spawned: spawnedRides.map((ride) => ({
         kind: ride.kind,
+        asset: ride.mesh.userData.blenderAsset || null,
         x: ride.mesh.position.x,
         z: ride.mesh.position.z,
       })),

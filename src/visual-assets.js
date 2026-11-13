@@ -7,10 +7,9 @@ const lookCache = new Map();
 const residentCache = new Map();
 const loader = new GLTFLoader();
 
-// Everyday people from Quaternius's Ultimate Animated Character pack.
-// CC0 1.0, https://opengameart.org/content/animated-characters-pack
-const MEN = ["casual-male", "casual2-male", "casual-bald", "worker-male"];
-const WOMEN = ["casual-female", "casual2-female", "old-classy-female"];
+// Original Blender people. All three are fictional clothed adult proportions.
+const MEN = ["pune-man", "pune-young-adult"];
+const WOMEN = ["pune-woman"];
 export async function loadSurfacePhotos() {
   const loader = new THREE.TextureLoader();
   const result = {};
@@ -37,7 +36,7 @@ export async function hydrateResidents(roots) {
       if (!library.has(name))
         library.set(
           name,
-          await loader.loadAsync(`/assets/characters/${name}.glb`),
+          await loader.loadAsync(`/assets/pune-originals/${name}.glb`),
         );
     }),
   );

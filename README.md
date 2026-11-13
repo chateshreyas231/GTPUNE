@@ -28,6 +28,7 @@ PORT=3001 npm start
 - G: pick up nearby weapons or collect/deliver the dabba; in the PANZER, trigger the visual muzzle flash. Keys 1–4 switch fists, pipe, stick, and stone. A pipe, stick, and stone lie on the pavement near the start. A cheat can also hand you the next street weapon.
 - Health is shown on the dashboard. A vehicle can knock you down. It cannot kill you.
 - Tilde (~) opens a cheat box. The words are original to this game: `LOHAKATHI` gives a street weapon, `KAVACHVAN` parks an original armored carrier beside you, `NAVINMOTAR` parks a car beside you, and `JEEVANBHAR` refills health. On foot, E enters a nearby vehicle.
+- The five Blender cars are also in traffic. Spawn them with `SUPERGT` (red supercar), `HERITAGEGT` (silver vintage GT), `SAHYADRI` (grey SUV), `MUSCLEGT` (red coupe), or `SUNSET` (yellow convertible). Brake with Space until stopped before E exits.
 - ~ : cheat line. `bazaar` adds pedestrians, `rushhour` adds traffic, and `monsoon` cycles the weather (drizzle, monsoon rain, blue hour, clear).
 - While you play, the city can stall a car in the lane, gather a small crowd at a tea stall, or leave a scooter broken down at the side of the road.
 - J / START DABBA DELIVERY: begin a timed ₹450 delivery. Stop at the marker, get out and press G to collect; press G again at FC Road to deliver. Completion saves the wallet locally.
@@ -35,7 +36,7 @@ PORT=3001 npm start
 - P: pause. The game also pauses on a hidden tab.
 - Follow the three amber markers to complete the evening run. Return to Deccan resets your vehicle position.
 
-Traffic follows road segments and yields near the player. Buildings, pedestrians and cars block movement. NPCs are fictional people. The selectable player uses three clothed Quaternius rigs; street pedestrians retain seven varied adult rigs. The player and the pedestrians on the street use rigged characters from Quaternius’s Ultimate Animated Character pack, uploaded by Quaternius to OpenGameArt: https://opengameart.org/content/animated-characters-pack . That page lists the license as CC0 and links to [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/). Skin and clothes are recolored in the game. Dialogue is authored text. A person who dies leaves a stylized blood mark at the death location. Speech uses nine bundled Marathi, Hindi and Indian English neural clips; no installed voice is required. These are synthetic performances, not local actor recordings. Engine and horn sounds are synthesized. See [asset provenance](docs/ASSETS.md).
+Traffic follows road segments and yields near the player. Buildings, pedestrians and cars block movement. NPCs are fictional people. The selectable player and ordinary street residents use three original Blender rigs with modeled facial features, fingers, clothing and six animation clips. Skin and clothes are recolored in the game. Five original Blender cars interpret the supplied vehicle references. Editable sources and preview renders are in [assets/blender](assets/blender); the original models are CC0. They remain stylized game assets. Dialogue is authored text. A person who dies leaves a stylized blood mark at the death location. Speech uses nine bundled Marathi, Hindi and Indian English neural clips; no installed voice is required. These are synthetic performances, not local actor recordings. Engine and horn sounds are synthesized. See [asset provenance](docs/ASSETS.md).
 
 ## Real Pune map data
 
@@ -69,7 +70,7 @@ Requested references:
 
 Benglooru’s public site and controls documentation were inspected after network access was restored. Its public documentation describes a stylized OSM-based map, generated local voices, driving, walking and missions. Its source code and assets have not been copied into this project. The provided YouTube links remain inaccessible through the cloud proxy.
 
-The current result is a playable prototype, not a finished GTA-scale game or photorealistic digital twin. Next fidelity steps require licensed building imagery/3D models, terrain, animated rigged residents, native actor recordings, more advanced traffic simulation and further spatial batching. The engine currently models a flat city surface and generated building exteriors. Fists and street weapons are original meshes. The Kavach carrier is an original tracked hull, not a model from another game. There are no interiors or multiplayer.
+The current result is a playable prototype, not a finished GTA-scale game or photorealistic digital twin. Next fidelity steps require licensed building imagery/3D models, terrain, higher fidelity animated residents, native actor recordings, more advanced traffic simulation and further spatial batching. The engine currently models a flat city surface and generated building exteriors. Fists and street weapons are original meshes. The Kavach carrier is an original tracked hull, not a model from another game. There are no interiors or multiplayer.
 
 The selected first facade-reference target is **Goodluck Chowk toward Fergusson College**. Exact facade reconstruction awaits original overlapping video/photos or licensed reference assets. Current textures and props are illustrative; they do not establish the real colors or signs of those buildings.
 
@@ -90,6 +91,7 @@ The combined main build retains the original history and integrates the separate
 | `bazaar`, `rushhour`, `monsoon`                      | Add bounded population/traffic or cycle weather                                                                      |
 | `LOHAKATHI`, `NAVINMOTAR`, `KAVACHVAN`, `JEEVANBHAR` | Grant a street weapon, park a car/carrier nearby, refill health                                                      |
 | `PANZER`                                             | Spawn an original tracked prop; E enters, Q/R rotate turret, G triggers a visual muzzle flash (no projectile damage) |
+| `SUPERGT`, `HERITAGEGT`, `SAHYADRI`, `MUSCLEGT`, `SUNSET` | Spawn the five original Blender reference cars; E enters, WASD drives, Space brakes                                  |
 | `CLOTHES`                                            | Cycle an outfit tint while preserving skin/hair                                                                      |
 | `DIWALI`, `GANPATI`, `KITES`, `FESTIVALOFF`          | Set the stylized festival scene                                                                                      |
 | `BLUESKY`, `FOG`, `STORM`, `WIND`, `CALM`            | Set visible atmosphere or wind strength                                                                              |

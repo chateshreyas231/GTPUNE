@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "author": "GTPUNE contributors",
+  "license": "CC0-1.0",
+  "generator": "scripts/build-blender-assets.py",
+  "blender": "4.3.2",
+  "reference": "User supplied five vehicle photographs; original approximate designs; hidden views inferred. No logos or source pixels included.",
+  "assets": [
+    {
+      "id": "deccan-supercar",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        2.396,
+        1.197,
+        4.935
+      ],
+      "designEnvelopeMeters": [
+        1.96,
+        1.26,
+        4.9
+      ],
+      "triangles": 23128,
+      "bytes": 858060,
+      "sha256": "3bceb2b27fb589f128b24d488b5b518d6cd021b56452698a357a3b28eb034bb1",
+      "animations": [],
+      "source": "assets/blender/deccan-supercar.blend",
+      "sourceSha256": "e8f6a6df022c575199157dfb07a04676d9c877c0fb94fcb96035293adfcc6fe2",
+      "file": "/assets/pune-originals/deccan-supercar.glb"
+    },
+    {
+      "id": "heritage-gt",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        2.132,
+        1.267,
+        4.535
+      ],
+      "designEnvelopeMeters": [
+        1.72,
+        1.33,
+        4.5
+      ],
+      "triangles": 22866,
+      "bytes": 779024,
+      "sha256": "e38f0f0f0594773527a78893e1595af6811e2e654ca8217f5d5089f147ec0080",
+      "animations": [],
+      "source": "assets/blender/heritage-gt.blend",
+      "sourceSha256": "286e9a2ed732adea14dee86c8dc09e475eb34f51c2eff1c2357857630f45d8df",
+      "file": "/assets/pune-originals/heritage-gt.glb"
+    },
+    {
+      "id": "sahyadri-suv",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        2.352,
+        1.81,
+        4.985
+      ],
+      "designEnvelopeMeters": [
+        1.92,
+        1.8,
+        4.95
+      ],
+      "triangles": 23396,
+      "bytes": 857236,
+      "sha256": "edc6c8e62fa72817c228bf839426588f4b893d74ffa89b974b9e65b5d7a61d0b",
+      "animations": [],
+      "source": "assets/blender/sahyadri-suv.blend",
+      "sourceSha256": "3cb59c87ab34d568edf6c716330154a533e65b0af629a977ab20dd0fc175ab24",
+      "file": "/assets/pune-originals/sahyadri-suv.glb"
+    },
+    {
+      "id": "deccan-muscle",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        2.33,
+        1.377,
+        4.965
+      ],
+      "designEnvelopeMeters": [
+        1.9,
+        1.4400000000000002,
+        4.930000000000001
+      ],
+      "triangles": 23128,
+      "bytes": 843264,
+      "sha256": "89300db46bf9b661c07cd33d0818f5da1c89f77e5100e9b7489e2c6d779adaf8",
+      "animations": [],
+      "source": "assets/blender/deccan-muscle.blend",
+      "sourceSha256": "6aa22f3dc3b72d32dde916c1d32eb2f39bd086eaed47133414dc6a12a97be3e2",
+      "file": "/assets/pune-originals/deccan-muscle.glb"
+    },
+    {
+      "id": "sunset-cabrio",
+      "kind": "vehicle",
+      "dimensionsMeters": [
+        2.33,
+        1.34,
+        4.965
+      ],
+      "designEnvelopeMeters": [
+        1.9,
+        1.4400000000000002,
+        4.930000000000001
+      ],
+      "triangles": 22846,
+      "bytes": 844884,
+      "sha256": "4ffb25f8857abead16a3735da18616ccdfd4b00fafd12573cf30a4525fc256c1",
+      "animations": [],
+      "source": "assets/blender/sunset-cabrio.blend",
+      "sourceSha256": "fb2546c0041ca1e7b43aa5fafba06174f8c20c5e27fdd03d1e81a50ac6d29cae",
+      "file": "/assets/pune-originals/sunset-cabrio.glb"
+    },
+    {
+      "id": "pune-woman",
+      "kind": "animated-human",
+      "dimensionsMeters": [
+        0.666,
+        1.7289,
+        0.334
+      ],
+      "designEnvelopeMeters": [
+        0.68,
+        1.74,
+        0.33
+      ],
+      "triangles": 14628,
+      "bytes": 655980,
+      "sha256": "bf6cc353c16b323b6432ab5bc937005e2799774a2b2bf0fa772c0b974a7a91ce",
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash"
+      ],
+      "source": "assets/blender/pune-woman.blend",
+      "sourceSha256": "9fcf95d9f9e91f23166e091313c217ab05f33c7d89c55a99fa74369e1c6b2edf",
+      "file": "/assets/pune-originals/pune-woman.glb"
+    },
+    {
+      "id": "pune-man",
+      "kind": "animated-human",
+      "dimensionsMeters": [
+        0.666,
+        1.7289,
+        0.303
+      ],
+      "designEnvelopeMeters": [
+        0.68,
+        1.74,
+        0.33
+      ],
+      "triangles": 14020,
+      "bytes": 630932,
+      "sha256": "681ec3144d169200decf744d634abe94314c7bd305475e7cf930a9b3e1aad91e",
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash"
+      ],
+      "source": "assets/blender/pune-man.blend",
+      "sourceSha256": "8557c34b3afb3eb99e0dec920d6ec94b61d44db2c0e42fe2528642cc42a0dfeb",
+      "file": "/assets/pune-originals/pune-man.glb"
+    },
+    {
+      "id": "pune-young-adult",
+      "kind": "animated-human",
+      "dimensionsMeters": [
+        0.666,
+        1.7289,
+        0.303
+      ],
+      "designEnvelopeMeters": [
+        0.68,
+        1.74,
+        0.33
+      ],
+      "triangles": 14020,
+      "bytes": 630936,
+      "sha256": "b011708c1b9f1288cad6ba5112152b8378a0f6677badb6322622efb896515dfe",
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "Punch_Left",
+        "Punch_Right",
+        "Sword_Slash"
+      ],
+      "source": "assets/blender/pune-young-adult.blend",
+      "sourceSha256": "dc41ff5c5c248e023d9877f95230999d5f2b17b1b3c2057ac26377d19860189f",
+      "file": "/assets/pune-originals/pune-young-adult.glb"
+    }
+  ]
+}
