@@ -1,6 +1,11 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
+import { PLAYER_LOOKS, lookById } from "./characters.js";
+
+const lookCache = new Map();
+const residentCache = new Map();
+const loader = new GLTFLoader();
 
 // Everyday people from Quaternius's Ultimate Animated Character pack.
 // CC0 1.0, https://opengameart.org/content/animated-characters-pack
@@ -26,18 +31,23 @@ export async function loadSurfacePhotos() {
   return result;
 }
 export async function hydrateResidents(roots) {
-  const loader = new GLTFLoader();
-  const library = new Map();
+  const library = residentCache;
   await Promise.all(
     [...MEN, ...WOMEN].map(async (name) => {
-      library.set(name, await loader.loadAsync(`/assets/characters/${name}.glb`));
+      if (!library.has(name))
+        library.set(
+          name,
+          await loader.loadAsync(`/assets/characters/${name}.glb`),
+        );
     }),
   );
   let men = 0;
   let women = 0;
   for (const root of roots) {
     const woman = root.userData.role?.gender === "woman";
-    const name = woman ? WOMEN[women++ % WOMEN.length] : MEN[men++ % MEN.length];
+    const name = woman
+      ? WOMEN[women++ % WOMEN.length]
+      : MEN[men++ % MEN.length];
     const gltf = library.get(name);
     const model = clone(gltf.scene);
     model.updateMatrixWorld(true);
@@ -55,20 +65,15 @@ export async function hydrateResidents(roots) {
       object.castShadow = true;
       object.receiveShadow = true;
     });
-    for (const child of [...root.children]) {
-      child.traverse((object) => {
-        if (!object.isMesh) return;
-        object.geometry.dispose();
-        const list = Array.isArray(object.material) ? object.material : [object.material];
-        for (const material of list) material.dispose();
-      });
-      root.remove(child);
-    }
+    clearCharacter(root);
+    markSharedGeometry(model);
     root.add(normalized);
     root.userData.height = 1.72;
     root.userData.detailedHuman = true;
     root.userData.cast = name;
     const mixer = new THREE.AnimationMixer(model);
+    root.userData.mixer = mixer;
+    root.userData.animationRoot = model;
     const idleClip = gltf.animations.find((clip) => clip.name === "Idle");
     const walkClip = gltf.animations.find((clip) => clip.name === "Walk");
     const idle = idleClip ? mixer.clipAction(idleClip) : null;
@@ -88,7 +93,9 @@ export async function hydrateResidents(roots) {
         }
       }
       mixer.update(Math.max(0, dt));
-      const sway = moving ? Math.sin((walk?.time || 0) * Math.PI * 2) * 0.04 : 0;
+      const sway = moving
+        ? Math.sin((walk?.time || 0) * Math.PI * 2) * 0.04
+        : 0;
       normalized.position.x = sway;
       normalized.rotation.z = sway * 0.7;
     };
@@ -104,7 +111,9 @@ function paintResident(model, root) {
   const hair = root.userData.role?.hair ?? 0x1b1714;
   model.traverse((object) => {
     if (!object.isMesh) return;
-    const source = Array.isArray(object.material) ? object.material : [object.material];
+    const source = Array.isArray(object.material)
+      ? object.material
+      : [object.material];
     const painted = source.map((material) => {
       const next = material.clone();
       const name = material.name || "";
@@ -119,4 +128,138 @@ function paintResident(model, root) {
     });
     object.material = Array.isArray(object.material) ? painted : painted[0];
   });
+}
+
+export async function prepareLooks() {
+  await Promise.all(
+    PLAYER_LOOKS.map(async (look) => {
+      if (!lookCache.has(look.id))
+        lookCache.set(look.id, await loader.loadAsync(look.file));
+    }),
+  );
+  return lookCache.size;
+}
+
+function paintLook(model, look) {
+  model.traverse((object) => {
+    if (!object.isMesh) return;
+    object.castShadow = true;
+    object.receiveShadow = true;
+    if (object.isSkinnedMesh) object.frustumCulled = false;
+    const source = Array.isArray(object.material)
+      ? object.material
+      : [object.material];
+    const painted = source.map((material) => {
+      const next = material.clone();
+      const hex = look.materials?.[next.name];
+      if (hex != null) next.color.setHex(hex);
+      next.metalness = 0.02;
+      next.roughness = 0.82;
+      return next;
+    });
+    object.material = Array.isArray(object.material) ? painted : painted[0];
+  });
+}
+
+// SkeletonUtils.clone shares immutable geometry with the cached source model.
+// Replacing a look disposes only clone-owned materials and skeleton resources.
+function markSharedGeometry(model) {
+  model.traverse((object) => {
+    if (!object.isMesh) return;
+    object.userData.sharedCharacterGeometry = true;
+  });
+}
+function clearCharacter(root) {
+  const oldMixer = root.userData.mixer;
+  if (oldMixer) {
+    oldMixer.stopAllAction();
+    if (root.userData.animationRoot)
+      oldMixer.uncacheRoot(root.userData.animationRoot);
+  }
+  for (const child of [...root.children]) {
+    if (child.userData?.attachment) continue;
+    const skeletons = new Set();
+    child.traverse((object) => {
+      if (!object.isMesh) return;
+      if (!object.userData.sharedCharacterGeometry) object.geometry?.dispose();
+      const materials = Array.isArray(object.material)
+        ? object.material
+        : [object.material];
+      for (const material of materials) material?.dispose();
+      if (object.isSkinnedMesh) skeletons.add(object.skeleton);
+    });
+    for (const skeleton of skeletons) skeleton?.dispose();
+    root.remove(child);
+  }
+}
+
+export function applyLook(root, id) {
+  const look = lookById(id);
+  const gltf = lookCache.get(look.id);
+  if (!gltf) return false;
+  const model = clone(gltf.scene);
+  model.traverse((object) => {
+    if (object.isSkinnedMesh) object.skeleton.update();
+  });
+  paintLook(model, look);
+  model.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(model);
+  const height = bounds.max.y - bounds.min.y;
+  const fitted = new THREE.Group();
+  fitted.name = "player-look";
+  // These rigs face +Z. Walking and driving face -Z.
+  model.rotation.y = Math.PI;
+  fitted.add(model);
+  if (height > 0.2) {
+    fitted.scale.setScalar(look.height / height);
+    fitted.position.y = -bounds.min.y * fitted.scale.x;
+  }
+  clearCharacter(root);
+  markSharedGeometry(model);
+  root.add(fitted);
+  const mixer = new THREE.AnimationMixer(fitted);
+  const actions = {};
+  for (const clip of gltf.animations) {
+    if (!["Idle", "Walk", "Run"].includes(clip.name)) continue;
+    const action = mixer.clipAction(clip, fitted);
+    action.enabled = true;
+    actions[clip.name] = action;
+  }
+  root.userData.mixer = mixer;
+  root.userData.animationRoot = fitted;
+  root.userData.actions = actions;
+  root.userData.clip = "";
+  root.userData.look = look.id;
+  root.userData.cast = look.id;
+  root.userData.name = look.name;
+  root.userData.height = look.height;
+  root.userData.detailedHuman = true;
+  root.userData.walk = (dt = 0, speed = 0) => {
+    const meters = Math.abs(Number(speed) || 0);
+    const clip =
+      meters > 3.2 && actions.Run
+        ? "Run"
+        : meters > 0.25 && actions.Walk
+          ? "Walk"
+          : "Idle";
+    const next = actions[clip];
+    if (next && root.userData.clip !== clip) {
+      next.reset().fadeIn(0.12).play();
+      const previous = actions[root.userData.clip];
+      if (previous) previous.fadeOut(0.12);
+      root.userData.clip = clip;
+    }
+    const playing = actions[root.userData.clip];
+    if (playing) {
+      playing.timeScale =
+        clip === "Run"
+          ? Math.max(0.85, meters / 4.5)
+          : clip === "Walk"
+            ? Math.max(0.8, meters / 1.4)
+            : 1;
+    }
+    mixer.update(Math.max(0, dt));
+  };
+  root.userData.walk(0, 0);
+  return true;
 }

@@ -59,6 +59,17 @@ export function resumeWalking(person, now) {
   return true;
 }
 
+// Blood is the place they died, before a shove moves the body.
+// A later move of the body does not change this spot. A knock that
+// leaves them alive leaves no stain. A second call after death does not.
+export function deathStain(person, next) {
+  if (!next?.changed || !next.dead || person?.dead) return null;
+  const x = Number(person?.x);
+  const z = Number(person?.z);
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
+  return { x, z };
+}
+
 export const STREET_WEAPONS = [
   { id: "pipe", name: "Pipe", reach: 1.8, damage: 3 },
   { id: "stick", name: "Stick", reach: 1.55, damage: 1 },

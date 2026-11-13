@@ -4,9 +4,21 @@
 
 `public/assets/materials/asphalt.jpg` and `plaster.jpg` are the 1K diffuse textures for Poly Haven's `asphalt_02` and `concrete_wall_006`. Poly Haven publishes its assets under CC0: https://polyhaven.com/license. Facade windows are original procedural overlays on the plaster material. These textures are general materials and do not reproduce a particular FC Road facade.
 
-## Animated resident reference
+## Playable girl, boy, and man
 
-The player and street pedestrians use these GLB files in `public/assets/characters/`:
+The player starts as Ananya. V cycles the selectable characters Ananya (girl), Kabir (boy), and Nikhil (man). These are stylized clothed Quaternius rigs, not photorealistic local residents.
+
+| File       | Selectable label | Rendered height | Source pack                                |
+| ---------- | ---------------- | --------------- | ------------------------------------------ |
+| `girl.glb` | Ananya / girl    | 1.62 m          | Ultimate Modular Women, Casual             |
+| `boy.glb`  | Kabir / boy      | 1.50 m          | Ultimate Modular Characters, Casual Hoodie |
+| `man.glb`  | Nikhil / man     | 1.76 m          | Ultimate Modular Characters, Casual 2      |
+
+Quaternius publishes these packs under CC0 1.0. Sources: https://quaternius.com/packs/ultimatemodularwomen.html and https://quaternius.com/packs/ultimatemodularcharacters.html. The file called `boy.glb` is an adult-pack casual hoodie male model scaled shorter; it is not a purpose-built anatomical child scan. The names and ages implied by the selectable labels are fictional. The game recolors skin, hair and clothing; its Idle, Walk and Run clips come from the source rig. The license note is retained in `public/assets/characters/LICENSE-QUATERNIUS.txt`.
+
+## Adult street residents
+
+Street pedestrians use these GLB files in `public/assets/characters/`:
 
 - `casual-male.glb`, `casual-female.glb`, `casual2-male.glb`, `casual2-female.glb`, `casual-bald.glb`, `worker-male.glb`, `old-classy-female.glb`
 

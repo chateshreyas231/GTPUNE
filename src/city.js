@@ -970,6 +970,8 @@ export {
   VEHICLE_TONES,
   fleetBody,
   distanceGain,
+  nearestCar,
+  CAR_ENTER_RANGE,
   makeVehicle,
   makeMotorcycle,
 } from "./vehicles.js";
