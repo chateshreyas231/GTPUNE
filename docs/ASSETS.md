@@ -20,4 +20,4 @@ To regenerate the clips, use Python 3, `edge-tts==7.3.1`, Node.js and `scripts/g
 
 ## Exact FC Road buildings
 
-The chosen reference target is Goodluck Chowk toward Fergusson College. No new building-by-building survey or reconstruction of this stretch has yet been completed. Real footprints remain from OpenStreetMap; facades and most heights remain estimated. Required input is overlapping original street video/photos or appropriately licensed facade/3D assets. The renderer currently uses a flat terrain surface, simplified road widths and generic building exteriors. A 4K photo is a 3840 × 2160 render, not a claim of photorealistic assets.
+The chosen reference target is Goodluck Chowk toward Fergusson College. Building footprints and tagged heights come from the OpenStreetMap extract; road widths come from `width` or `lanes` tags, with class defaults only when both are missing. See [measured streets](MEASUREMENTS.md). Facades, awning depth, shop lettering and tree spacing are original geometry, not copied photos. The renderer still uses a flat terrain surface. A 4K photo is a 3840 × 2160 render, not a claim of photorealistic assets.

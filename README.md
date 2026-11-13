@@ -40,7 +40,7 @@ npm run build
 
 The importer caches successful XML tiles in ignored `.cache/gtpune-osm/` so interrupted imports resume. Remove that cache to refresh from the service. Data is validated before replacing `public/data/pune-osm.json`. The in-game source label shows whether the bundled map or the illustrative fallback is active. If the map is absent, a generated city allows offline development.
 
-Map data is © OpenStreetMap contributors, licensed under [ODbL 1.0](https://www.openstreetmap.org/copyright), separately from application code. See [map data provenance](docs/MAP-DATA.md). Retain attribution and comply with ODbL when redistributing a derived database. Heights use OSM height or level tags when present and default to 12 m otherwise. No Google Maps tiles or Street View imagery are copied.
+Map data is © OpenStreetMap contributors, licensed under [ODbL 1.0](https://www.openstreetmap.org/copyright), separately from application code. See [map data provenance](docs/MAP-DATA.md). Retain attribution and comply with ODbL when redistributing a derived database. Heights use an OSM `height` tag when present, otherwise `building:levels` at 3 m per level, otherwise the median floor count of that building type in the extract. Road widths use an OSM `width` tag, otherwise `lanes` at 3.5 m, otherwise the modal lane count for that highway class. See [measured streets](docs/MEASUREMENTS.md). No Google Maps tiles, Street View photos, or Mapchannels imagery are copied.
 
 ## Validation
 

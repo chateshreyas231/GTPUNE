@@ -57,6 +57,109 @@ export function fallbackCity() {
     ],
   };
 }
+// Survey constants from public/data/pune-osm.json. See docs/MEASUREMENTS.md.
+// 46 buildings carry both height and building:levels. Their storey median is
+// 3.33 m and the lower quartile is 3.00 m, so an untagged level is 3 m.
+export const STOREY_METERS = 3;
+// IRC urban lane, used only when a way has lanes but no width tag.
+export const LANE_METERS = 3.5;
+// Modal `lanes` among tagged ways: primary 2 (108/196), secondary 2 (66/85),
+// tertiary 2 (57/76), trunk 2 (16/27), residential 2 (25/44).
+const CLASS_LANES = {
+  motorway: 2,
+  trunk: 2,
+  primary: 2,
+  secondary: 2,
+  tertiary: 2,
+  residential: 2,
+  unclassified: 2,
+};
+// Median floors of buildings of this type that have a height or level tag.
+// hotel (n=2) and a college levels value of 0 are not used as defaults.
+const TYPE_FLOORS = {
+  apartments: 5,
+  residential: 4,
+  yes: 4,
+  house: 2,
+  detached: 2,
+  bungalow: 1,
+  shed: 1,
+  commercial: 3,
+  retail: 4,
+  school: 4,
+  college: 4,
+  university: 4,
+  office: 5,
+  industrial: 3,
+  hospital: 7,
+  temple: 1,
+  train_station: 6,
+  dormitory: 2,
+};
+
+export function parseMeters(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value == null) return NaN;
+  const match = String(value).trim().match(/^(\d+(?:\.\d+)?)(?:\s*m)?$/i);
+  return match ? Number(match[1]) : NaN;
+}
+
+export function roadWidthFromTags(tags = {}) {
+  const tagged = parseMeters(tags.width);
+  if (tagged >= 1 && tagged <= 40)
+    return { width: tagged, widthSource: "width-tag" };
+  const lanes = parseMeters(tags.lanes);
+  if (lanes >= 1 && lanes <= 8)
+    return { width: lanes * LANE_METERS, widthSource: "lanes" };
+  if (tags.highway === "service" || tags.highway === "living_street")
+    return { width: 5, widthSource: "class-default" };
+  return {
+    width: (CLASS_LANES[tags.highway] ?? 2) * LANE_METERS,
+    widthSource: "class-default",
+  };
+}
+
+// Sidewalks are not width-tagged. These sit inside the measured p10 gap from
+// the centerline to the nearest footprint. See docs/MEASUREMENTS.md.
+export function sidewalkMeters(name = "") {
+  const n = String(name).toLowerCase();
+  if (n.includes("gokhale") || n.includes("off fc")) return 2.4;
+  if (
+    n.includes("jangli maharaj") ||
+    n.includes("karve road") ||
+    n.includes("paud road")
+  )
+    return 2.2;
+  return 1.6;
+}
+
+export function buildingSizeFromTags(tags = {}) {
+  const tagged = parseMeters(tags.height);
+  if (tagged > 0) {
+    const height = Math.min(120, Math.max(3, tagged));
+    return {
+      height,
+      floors: Math.max(1, Math.round(height / STOREY_METERS)),
+      heightSource: "height-tag",
+    };
+  }
+  const levels = parseMeters(tags["building:levels"]);
+  if (levels > 0 && levels < 60) {
+    const floors = Math.max(1, Math.round(levels));
+    return {
+      height: Math.min(120, Math.max(3, floors * STOREY_METERS)),
+      floors,
+      heightSource: "levels-tag",
+    };
+  }
+  const floors = TYPE_FLOORS[tags.building] || TYPE_FLOORS.yes;
+  return {
+    height: floors * STOREY_METERS,
+    floors,
+    heightSource: "type-default",
+  };
+}
+
 export function parseOSM(data) {
   if (!Array.isArray(data.elements))
     throw Error("Invalid OpenStreetMap response");
@@ -78,26 +181,28 @@ export function parseOSM(data) {
         "service",
         "living_street",
       ].includes(e.tags.highway)
-    )
+    ) {
+      const measured = roadWidthFromTags(e.tags);
       roads.push({
         points,
-        width: ["primary", "trunk"].includes(e.tags.highway) ? 20 : 12,
+        width: measured.width,
+        widthSource: measured.widthSource,
+        sidewalk: sidewalkMeters(e.tags.name),
         name: e.tags.name,
+        highway: e.tags.highway,
       });
-    if (e.tags.building && points.length >= 4)
+    }
+    if (e.tags.building && points.length >= 4) {
+      const measured = buildingSizeFromTags(e.tags);
       buildings.push({
         points,
-        height: Math.min(
-          120,
-          Math.max(
-            3,
-            parseFloat(e.tags.height) ||
-              Number(e.tags["building:levels"]) * 3 ||
-              12,
-          ),
-        ),
-        color: (e.id % 100) / 100,
+        height: measured.height,
+        floors: measured.floors,
+        heightSource: measured.heightSource,
+        kind: e.tags.building,
+        color: ((e.id || 0) % 100) / 100,
       });
+    }
   }
   if (!roads.length) throw Error("Map contains no driveable roads");
   const nearest = (p) => {
