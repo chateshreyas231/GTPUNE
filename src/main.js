@@ -456,6 +456,7 @@ for (let i = 0; i < 24; i++) {
     direction: i % 2 ? 1 : -1,
   });
 }
+const parked = [];
 let detailedHumans = 0;
 hydrateResidents([
   avatar,
@@ -494,19 +495,56 @@ marker.position.set(...[city.stops[0].point[0], 0, city.stops[0].point[1]]);
 let active = false,
   paused = false,
   walking = false,
+  running = false,
   speed = 0,
   yaw = spawnHeading,
+  camYaw = spawnHeading,
+  camPitch = 0.05,
+  orbitYaw = 0,
   view = 0,
   sound = false,
   night = false,
   elapsed = 0,
   distanceTravelled = 0;
+let vehicle = { mesh: player, kind: "own" };
+let moveX = 0,
+  moveZ = -1;
 const keys = new Set();
 let previousTime = performance.now();
 let audioContext, engine, engineGain, toastTimer;
 const voicePlayer = new Audio();
 voicePlayer.volume = 0.9;
-const actor = () => (walking ? avatar : player);
+const actor = () => (walking ? avatar : vehicle.mesh);
+const ENTER_REACH = 4;
+function carChoices() {
+  return [
+    { mesh: player, kind: "own" },
+    ...traffic.map((sim) => ({ mesh: sim.mesh, kind: "traffic", sim })),
+    ...parked,
+  ];
+}
+function nearVehicle(x, z, radius, ignore) {
+  return carChoices().some(
+    (car) =>
+      car.mesh !== ignore &&
+      Math.hypot(x - car.mesh.position.x, z - car.mesh.position.z) < radius,
+  );
+}
+function closestCar() {
+  let best = null,
+    bestD = ENTER_REACH;
+  for (const car of carChoices()) {
+    const d = Math.hypot(
+      avatar.position.x - car.mesh.position.x,
+      avatar.position.z - car.mesh.position.z,
+    );
+    if (d < bestD) {
+      best = car;
+      bestD = d;
+    }
+  }
+  return best;
+}
 function toast(text) {
   $("toast").textContent = text;
   $("toast").style.opacity = "1";
@@ -582,44 +620,105 @@ function talk() {
 }
 function reset() {
   player.position.set(city.spawn[0], 0, city.spawn[1]);
+  player.rotation.y = spawnHeading;
   speed = 0;
+  running = false;
   yaw = spawnHeading;
+  camYaw = spawnHeading;
+  orbitYaw = 0;
+  camPitch = 0.05;
   walking = false;
   avatar.visible = false;
-  player.rotation.y = spawnHeading;
+  vehicle = { mesh: player, kind: "own" };
   toast("Back in Deccan. The evening is yours.");
 }
-function toggleWalk() {
-  if (Math.abs(speed) > 1) {
+function exitSpot(mesh, side) {
+  return [
+    mesh.position.x + Math.cos(yaw) * side,
+    mesh.position.z - Math.sin(yaw) * side,
+  ];
+}
+function leaveVehicle() {
+  if (Math.abs(speed) > 0.8) {
     toast("Stop the car before getting out.");
     return;
   }
-  if (walking) {
-    if (avatar.position.distanceTo(player.position) > 7) {
-      toast("Walk back to your car to get in.");
-      return;
-    }
-    walking = false;
-    avatar.visible = false;
-    yaw = player.rotation.y;
-  } else {
-    const p = player.position
-      .clone()
-      .add(new THREE.Vector3(Math.cos(yaw) * 3, 0, -Math.sin(yaw) * 3));
-    if (collides(p.x, p.z, 0.4)) {
+  const mesh = vehicle.mesh;
+  let spot = exitSpot(mesh, 2.3);
+  if (collides(spot[0], spot[1], 0.4)) {
+    spot = exitSpot(mesh, -2.3);
+    if (collides(spot[0], spot[1], 0.4)) {
       toast("There is no room to exit here.");
       return;
     }
-    walking = true;
-    avatar.position.copy(p);
-    avatar.visible = true;
   }
+  walking = true;
+  running = false;
+  avatar.position.set(spot[0], 0, spot[1]);
+  avatar.rotation.y = yaw;
+  avatar.visible = true;
+  camYaw = yaw;
+  orbitYaw = 0;
   speed = 0;
-  toast(
-    walking
-      ? "On foot. Press T near a neighbour to talk."
-      : "Back behind the wheel.",
-  );
+  vehicle = null;
+  toast("On foot. Shift runs. E enters a nearby car. Q punches. T talks.");
+}
+function takeVehicle(car) {
+  if (car.sim) {
+    const index = traffic.indexOf(car.sim);
+    if (index >= 0) traffic.splice(index, 1);
+    const parkedCar = { mesh: car.mesh, kind: "traffic" };
+    parked.push(parkedCar);
+    vehicle = parkedCar;
+  } else vehicle = { mesh: car.mesh, kind: car.kind };
+  walking = false;
+  running = false;
+  avatar.visible = false;
+  yaw = car.mesh.rotation.y;
+  orbitYaw = 0;
+  camPitch = 0.12;
+  speed = 0;
+  toast(car.kind === "traffic" ? "You took the wheel." : "Back behind the wheel.");
+}
+function toggleWalk() {
+  if (!walking) {
+    leaveVehicle();
+    return;
+  }
+  const car = closestCar();
+  if (!car) {
+    toast("No car close enough.");
+    return;
+  }
+  takeVehicle(car);
+}
+function punch() {
+  if (!walking) return;
+  if (speed < 0.35) {
+    yaw = camYaw;
+    avatar.rotation.y = yaw;
+  }
+  avatar.userData.strike = 1;
+  const fx = -Math.sin(yaw),
+    fz = -Math.cos(yaw);
+  let best = null,
+    bestD = 1.6;
+  for (const ped of pedestrians) {
+    const dx = ped.mesh.position.x - avatar.position.x,
+      dz = ped.mesh.position.z - avatar.position.z,
+      dist = Math.hypot(dx, dz);
+    if (dist > bestD || dist < 0.05) continue;
+    if ((dx / dist) * fx + (dz / dist) * fz < 0.4) continue;
+    best = ped;
+    bestD = dist;
+  }
+  if (!best) return;
+  best.stunUntil = elapsed + 2.2;
+  best.frozenAt = elapsed;
+  best.recoil = best.recoil || new THREE.Vector3();
+  best.recoil.x += fx * 1.15;
+  best.recoil.z += fz * 1.15;
+  toast("They stumble back.");
 }
 function collides(x, z, r = 1.4) {
   for (const b of obstacles) {
@@ -679,6 +778,7 @@ function action(key) {
   }
   if (paused || !active) return;
   if (key === "e") toggleWalk();
+  if (key === "q") punch();
   if (key === "f") interactJob();
   if (key === "j") startJob();
   if (key === "c") {
@@ -703,6 +803,26 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 window.addEventListener("blur", () => keys.clear());
+renderer.domElement.addEventListener("mousedown", (e) => {
+  if (e.button !== 0 || !active || paused || $("instructions").open) return;
+  punch();
+});
+renderer.domElement.addEventListener("click", () => {
+  if (navigator.webdriver) return;
+  if (document.pointerLockElement !== renderer.domElement)
+    renderer.domElement.requestPointerLock();
+});
+document.addEventListener("mousemove", (e) => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  const sensitivity = 0.0022;
+  camPitch = THREE.MathUtils.clamp(
+    camPitch - e.movementY * sensitivity,
+    walking ? -0.45 : -0.35,
+    walking ? 0.55 : 0.85,
+  );
+  if (walking) camYaw -= e.movementX * sensitivity;
+  else orbitYaw -= e.movementX * sensitivity;
+});
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && active) {
     paused = true;
@@ -714,7 +834,7 @@ $("play").onclick = () => {
   active = true;
   document.body.classList.add("playing");
   $("play").blur();
-  toast("WASD to drive · E to walk · T to talk");
+  toast("WASD moves. Click to look. Shift runs. E takes a nearby car.");
 };
 $("audio").onclick = enableSound;
 $("photo").onclick = () => {
@@ -826,33 +946,73 @@ function animate() {
   const now = performance.now();
   const dt = Math.min((now - previousTime) / 1000, 0.05);
   previousTime = now;
-  const running = active && !paused && !$("instructions").open;
-  if (running) {
+  const live = active && !paused && !$("instructions").open;
+  if (avatar.userData.strike > 0)
+    avatar.userData.strike = Math.max(0, avatar.userData.strike - dt / 0.36);
+  if (live) {
     elapsed += dt;
-    const accel =
-      (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
-      (keys.has("s") || keys.has("arrowdown") ? 1 : 0);
-    const steering =
-      (keys.has("a") || keys.has("arrowleft") ? 1 : 0) -
-      (keys.has("d") || keys.has("arrowright") ? 1 : 0);
-    speed += accel * (walking ? 9 : 12) * dt;
-    speed *= Math.exp(
-      -dt * (keys.has(" ") ? 5 : accel ? 0.13 : walking ? 6 : 0.7),
-    );
-    speed = THREE.MathUtils.clamp(speed, walking ? -2 : -9, walking ? 5 : 38);
-    if (walking || Math.abs(speed) > 0.15)
-      yaw +=
-        steering *
-        dt *
-        (walking ? 2.4 : Math.min(1.2, Math.abs(speed) * 0.12)) *
-        Math.sign(speed || 1);
-    const p = actor().position,
-      nx = p.x - Math.sin(yaw) * speed * dt,
+    const p = actor().position;
+    let nx = p.x,
+      nz = p.z;
+    if (walking) {
+      const forward =
+        (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
+        (keys.has("s") || keys.has("arrowdown") ? 1 : 0);
+      const strafe =
+        (keys.has("d") || keys.has("arrowright") ? 1 : 0) -
+        (keys.has("a") || keys.has("arrowleft") ? 1 : 0);
+      const moving = forward !== 0 || strafe !== 0;
+      let mx = 0,
+        mz = 0;
+      if (moving) {
+        const len = Math.hypot(forward, strafe);
+        const fx = -Math.sin(camYaw),
+          fz = -Math.cos(camYaw),
+          rx = Math.cos(camYaw),
+          rz = -Math.sin(camYaw);
+        mx = fx * (forward / len) + rx * (strafe / len);
+        mz = fz * (forward / len) + rz * (strafe / len);
+        moveX = mx;
+        moveZ = mz;
+      }
+      running =
+        moving &&
+        (keys.has("shift") || keys.has("shiftleft") || keys.has("shiftright"));
+      const cap = moving ? (running ? 5.4 : 1.75) : 0;
+      speed += (cap - speed) * (1 - Math.exp(-dt * (cap > speed ? 8 : 11)));
+      if (keys.has(" ")) speed *= Math.exp(-dt * 8);
+      nx = p.x + (moving ? mx : moveX) * speed * dt;
+      nz = p.z + (moving ? mz : moveZ) * speed * dt;
+      if (moving) {
+        const face = Math.atan2(-mx, -mz);
+        const delta = Math.atan2(Math.sin(face - yaw), Math.cos(face - yaw));
+        yaw += delta * (1 - Math.exp(-dt * 12));
+      }
+    } else {
+      running = false;
+      const accel =
+        (keys.has("w") || keys.has("arrowup") ? 1 : 0) -
+        (keys.has("s") || keys.has("arrowdown") ? 1 : 0);
+      const steering =
+        (keys.has("a") || keys.has("arrowleft") ? 1 : 0) -
+        (keys.has("d") || keys.has("arrowright") ? 1 : 0);
+      speed += accel * 12 * dt;
+      speed *= Math.exp(-dt * (keys.has(" ") ? 5 : accel ? 0.13 : 0.7));
+      speed = THREE.MathUtils.clamp(speed, -9, 38);
+      if (Math.abs(speed) > 0.15)
+        yaw +=
+          steering *
+          dt *
+          Math.min(1.2, Math.abs(speed) * 0.12) *
+          Math.sign(speed || 1);
+      nx = p.x - Math.sin(yaw) * speed * dt;
       nz = p.z - Math.cos(yaw) * speed * dt;
-    const hitTraffic = traffic.some(
-      (t) =>
-        Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) <
-        (walking ? 1.8 : 3),
+    }
+    const hitTraffic = nearVehicle(
+      nx,
+      nz,
+      walking ? 1.9 : 3,
+      walking ? null : vehicle.mesh,
     );
     const hitPed =
       !walking &&
@@ -862,12 +1022,8 @@ function animate() {
     if (!collides(nx, nz, walking ? 0.4 : 1.4) && !hitTraffic && !hitPed) {
       p.set(nx, 0, nz);
       distanceTravelled += Math.abs(speed) * dt;
-    } else {
-      speed = -speed * 0.15;
-    }
+    } else speed *= -0.15;
     actor().rotation.y = yaw;
-    if (walking)
-      avatar.userData.walk?.(elapsed, Math.min(1, Math.abs(speed) / 2));
     const limit = city.source === "illustrative" ? 900 : 6500;
     if (Math.abs(p.x) > limit || Math.abs(p.z) > limit) {
       reset();
@@ -895,15 +1051,7 @@ function animate() {
         f = t.direction === 1 ? t.t : 1 - t.t;
       const x = r.a[0] + dx * r.length * f + dz * r.width * 0.22 * t.direction,
         z = r.a[1] + dz * r.length * f - dx * r.width * 0.22 * t.direction;
-      if (
-        Math.hypot(x - p.x, z - p.z) < 7 ||
-        traffic.some(
-          (other) =>
-            other !== t &&
-            Math.hypot(x - other.mesh.position.x, z - other.mesh.position.z) <
-              4.5,
-        )
-      ) {
+      if (Math.hypot(x - p.x, z - p.z) < 7 || nearVehicle(x, z, 4.5, t.mesh)) {
         t.t = old;
         t.road = oldRoad;
         t.direction = oldDirection;
@@ -912,15 +1060,22 @@ function animate() {
       t.mesh.position.set(x, 0, z);
       t.mesh.rotation.y = r.angle + (t.direction === 1 ? Math.PI : 0);
     }
-    for (const p of pedestrians) {
-      p.mesh.position.copy(p.start);
-      p.mesh.position.x +=
-        Math.sin(p.angle) * Math.sin(elapsed * 0.3 + p.phase) * 8;
-      p.mesh.position.z +=
-        Math.cos(p.angle) * Math.sin(elapsed * 0.3 + p.phase) * 8;
-      p.mesh.userData.walk?.(elapsed + p.phase, 0.8);
-      p.mesh.rotation.y =
-        p.angle + (Math.cos(elapsed * 0.3 + p.phase) > 0 ? Math.PI : 0);
+    for (const ped of pedestrians) {
+      const stunned = (ped.stunUntil || 0) > elapsed;
+      const clock = stunned ? ped.frozenAt || elapsed : elapsed;
+      const wobble = Math.sin(clock * 0.3 + ped.phase);
+      const pace = Math.abs(Math.cos(clock * 0.3 + ped.phase) * 2.4);
+      if (!ped.recoil) ped.recoil = new THREE.Vector3();
+      if (!stunned) ped.recoil.multiplyScalar(Math.exp(-dt * 2.2));
+      ped.mesh.position.set(
+        ped.start.x + Math.sin(ped.angle) * wobble * 8 + ped.recoil.x,
+        0,
+        ped.start.z + Math.cos(ped.angle) * wobble * 8 + ped.recoil.z,
+      );
+      ped.mesh.rotation.y =
+        ped.angle + (Math.cos(clock * 0.3 + ped.phase) > 0 ? Math.PI : 0);
+      ped.mesh.rotation.x = stunned ? 0.38 : 0;
+      ped.mesh.userData.walk?.(clock + ped.phase, stunned ? 0 : pace);
     }
     if (job && ["pickup", "delivery"].includes(job.phase)) {
       job = tickDelivery(job, dt);
@@ -989,9 +1144,14 @@ function animate() {
       }
     }
   }
+  const poseTime = now / 1000;
+  avatar.userData.walk?.(poseTime, live && walking ? speed : 0);
+  if (!live)
+    for (const ped of pedestrians)
+      ped.mesh.userData.walk?.(poseTime + ped.phase, 0);
   if (engineGain) {
     engineGain.gain.setTargetAtTime(
-      sound && running && !walking ? 0.018 : 0,
+      sound && live && !walking ? 0.018 : 0,
       audioContext.currentTime,
       0.1,
     );
@@ -1005,14 +1165,33 @@ function animate() {
   if (Math.hypot(p.x - buildingCenter.x, p.z - buildingCenter.y) > 300)
     renderBuildings(p.x, p.z);
   if (active) {
-    const back = view === 1 ? 5 : view === 2 ? 18 : 13,
-      height = view === 1 ? 3 : view === 2 ? 42 : 7;
-    desiredCamera.set(
-      p.x + Math.sin(yaw) * back,
-      p.y + (walking ? height * 0.65 : height),
-      p.z + Math.cos(yaw) * back,
-    );
-    look.set(p.x - Math.sin(yaw) * 8, 1.5, p.z - Math.cos(yaw) * 8);
+    if (walking) {
+      const dist = view === 1 ? 2.35 : 3.45;
+      const pitch = camPitch;
+      const horiz = dist * Math.cos(pitch);
+      desiredCamera.set(
+        p.x + Math.sin(camYaw) * horiz,
+        Math.max(0.55, p.y + 1.45 + Math.sin(pitch) * dist * 0.45),
+        p.z + Math.cos(camYaw) * horiz,
+      );
+      look.set(
+        p.x - Math.sin(camYaw) * 1.6,
+        p.y + 1.35 + Math.sin(pitch) * 0.35,
+        p.z - Math.cos(camYaw) * 1.6,
+      );
+    } else {
+      const back = view === 1 ? 5 : view === 2 ? 18 : 13,
+        height = view === 1 ? 3 : view === 2 ? 42 : 7,
+        cy = yaw + orbitYaw,
+        pitch = camPitch,
+        horiz = back * Math.cos(pitch * 0.45);
+      desiredCamera.set(
+        p.x + Math.sin(cy) * horiz,
+        p.y + height + Math.sin(pitch) * 3,
+        p.z + Math.cos(cy) * horiz,
+      );
+      look.set(p.x - Math.sin(cy) * 6, 1.35, p.z - Math.cos(cy) * 6);
+    }
   } else {
     const t = performance.now() * 0.000025;
     desiredCamera.set(90 + Math.sin(t) * 70, 60, 185 + Math.cos(t) * 45);
@@ -1033,7 +1212,13 @@ function animate() {
     $("speed-bar").style.width =
       Math.min(100, (Math.abs(speed) / 38) * 100) + "%";
     $("gear").textContent = speed < -0.2 ? "R" : speed > 0.2 ? "D" : "N";
-    $("mode").textContent = walking ? "ON FOOT / EXPLORE" : "COMPACT / STREET";
+    $("mode").textContent = walking
+      ? running
+        ? "ON FOOT / RUN"
+        : "ON FOOT / WALK"
+      : vehicle?.kind === "traffic"
+        ? "BORROWED / STREET"
+        : "COMPACT / STREET";
     const nearest = city.stops.reduce((a, b) =>
       Math.hypot(p.x - a.point[0], p.z - a.point[1]) <
       Math.hypot(p.x - b.point[0], p.z - b.point[1])
@@ -1061,6 +1246,9 @@ window.__pune = {
       active,
       paused,
       walking,
+      onFoot: walking,
+      running,
+      vehicle: walking ? "foot" : vehicle?.kind || "own",
       speed,
       x: actor().position.x,
       z: actor().position.z,

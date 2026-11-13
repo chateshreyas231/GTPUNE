@@ -203,6 +203,34 @@ export function makeCar(color = 0xeee6cc, rickshaw = false) {
     }
   return g;
 }
+// A full stride cycle. A walk is about 1 Hz, near 110 steps a minute.
+// A run lengthens the stride and lifts the knees. Nearly stopped is idle.
+export function gaitCycle(time, speed) {
+  const v = Math.abs(Number(speed) || 0);
+  const run = THREE.MathUtils.clamp((v - 2.3) / 2.4, 0, 1);
+  const amount = v <= 0.18 ? 0 : THREE.MathUtils.clamp((v - 0.18) / 0.65, 0, 1);
+  const freq = 0.98 + run * 0.62;
+  const phase = time * freq * Math.PI * 2;
+  return {
+    phase,
+    amount,
+    run,
+    idle: amount === 0,
+    stride: amount * (0.45 + run * 0.4),
+    knee: amount * (0.55 + run * 0.7),
+    arm: amount * (0.42 + run * 0.28),
+    bob: amount * (0.045 + run * 0.04),
+    lean: run * 0.28 * (amount > 0 ? 1 : 0),
+    breath: Math.sin(time * 1.8) * (amount > 0.2 ? 0.012 : 0.04),
+  };
+}
+// Short chamber, then the arm extends, then it returns. No contact gore.
+export function punchEnvelope(strike) {
+  if (!strike) return 0;
+  const t = 1 - Math.min(1, Math.max(0, strike));
+  if (t < 0.18) return -0.4 * (t / 0.18);
+  return Math.sin(((t - 0.18) / 0.82) * Math.PI);
+}
 export function person(index) {
   const g = new THREE.Group(),
     skin = [0x8a553b, 0xb67b50, 0x754b38, 0xcc996b][index % 4],
@@ -216,7 +244,13 @@ export function person(index) {
     parent.add(m);
     return m;
   };
-  add(new THREE.SphereGeometry(0.19, 16, 12), skin, 0, 1.65, 0).scale.set(
+  const rig = new THREE.Group();
+  g.add(rig);
+  const chest = new THREE.Group();
+  const chestBase = 0.98;
+  chest.position.y = chestBase;
+  rig.add(chest);
+  add(new THREE.SphereGeometry(0.19, 16, 12), skin, 0, 0.67, 0, chest).scale.set(
     0.86,
     1.12,
     0.9,
@@ -225,47 +259,93 @@ export function person(index) {
     new THREE.SphereGeometry(0.195, 12, 8),
     0x242322,
     0,
-    1.76,
+    0.78,
     0.015,
+    chest,
   ).scale.set(0.92, 0.55, 0.97);
-  add(new THREE.CylinderGeometry(0.085, 0.09, 0.12, 8), skin, 0, 1.43, 0);
+  add(new THREE.CylinderGeometry(0.085, 0.09, 0.12, 8), skin, 0, 0.45, 0, chest);
   add(
-    new THREE.CylinderGeometry(0.23, 0.19, 0.58, 12),
+    new THREE.CylinderGeometry(0.23, 0.19, 0.52, 12),
     shirt,
     0,
-    1.1,
+    0.16,
     0,
+    chest,
   ).scale.z = 0.65;
   for (const x of [-0.065, 0.065]) {
-    add(new THREE.SphereGeometry(0.025, 8, 6), 0xe6dac8, x, 1.68, -0.16);
-    add(new THREE.SphereGeometry(0.012, 6, 6), 0x242424, x, 1.68, -0.181);
+    add(new THREE.SphereGeometry(0.025, 8, 6), 0xe6dac8, x, 0.7, -0.16, chest);
+    add(new THREE.SphereGeometry(0.012, 6, 6), 0x242424, x, 0.7, -0.181, chest);
   }
-  add(new THREE.SphereGeometry(0.035, 8, 6), skin, 0, 1.61, -0.18);
-  const legs = [],
-    arms = [];
+  add(new THREE.SphereGeometry(0.035, 8, 6), skin, 0, 0.63, -0.18, chest);
+  const thighs = [],
+    shins = [],
+    feet = [],
+    uppers = [],
+    forearms = [];
   for (const side of [-1, 1]) {
-    const leg = new THREE.Group();
-    leg.position.set(side * 0.11, 0.83, 0);
-    g.add(leg);
-    legs.push(leg);
-    add(new THREE.CapsuleGeometry(0.09, 0.48, 4, 8), 0x344848, 0, -0.3, 0, leg);
-    add(new THREE.BoxGeometry(0.17, 0.13, 0.3), 0x262823, 0, -0.7, -0.05, leg);
-    const arm = new THREE.Group();
-    arm.position.set(side * 0.25, 1.34, 0);
-    g.add(arm);
-    arms.push(arm);
-    add(new THREE.CapsuleGeometry(0.065, 0.4, 4, 8), skin, 0, -0.25, 0, arm);
-    add(new THREE.SphereGeometry(0.075, 8, 6), skin, 0, -0.53, 0, arm);
+    const thigh = new THREE.Group();
+    thigh.position.set(side * 0.11, 0.86, 0);
+    rig.add(thigh);
+    thighs.push(thigh);
+    add(
+      new THREE.CapsuleGeometry(0.09, 0.28, 4, 8),
+      0x344848,
+      0,
+      -0.2,
+      0,
+      thigh,
+    );
+    const shin = new THREE.Group();
+    shin.position.y = -0.4;
+    thigh.add(shin);
+    shins.push(shin);
+    add(new THREE.CapsuleGeometry(0.07, 0.26, 4, 8), 0x344848, 0, -0.18, 0, shin);
+    const foot = new THREE.Group();
+    foot.position.y = -0.36;
+    shin.add(foot);
+    feet.push(foot);
+    add(new THREE.BoxGeometry(0.14, 0.08, 0.28), 0x262823, 0, -0.02, -0.06, foot);
+    const upper = new THREE.Group();
+    upper.position.set(side * 0.28, 0.36, 0);
+    chest.add(upper);
+    uppers.push(upper);
+    add(new THREE.CapsuleGeometry(0.055, 0.22, 4, 8), shirt, 0, -0.14, 0, upper);
+    const fore = new THREE.Group();
+    fore.position.y = -0.28;
+    upper.add(fore);
+    forearms.push(fore);
+    add(new THREE.CapsuleGeometry(0.045, 0.2, 4, 8), skin, 0, -0.12, 0, fore);
+    add(new THREE.SphereGeometry(0.06, 8, 6), skin, 0, -0.26, 0, fore);
   }
-  g.userData.walk = (time, amount = 1) => {
-    legs.forEach(
-      (p, i) =>
-        (p.rotation.x = Math.sin(time * 6 + i * Math.PI) * 0.45 * amount),
-    );
-    arms.forEach(
-      (p, i) =>
-        (p.rotation.x = -Math.sin(time * 6 + i * Math.PI) * 0.35 * amount),
-    );
+  g.userData.walk = (time, speed = 0) => {
+    const cycle = gaitCycle(time, speed);
+    const swing = Math.sin(cycle.phase);
+    const lifts = [
+      Math.max(0, Math.cos(cycle.phase)),
+      Math.max(0, -Math.cos(cycle.phase)),
+    ];
+    const punch = punchEnvelope(g.userData.strike);
+    rig.position.y = Math.abs(Math.sin(cycle.phase)) * cycle.bob;
+    chest.rotation.x = -cycle.lean;
+    chest.position.y = chestBase + cycle.breath * 0.2;
+    thighs.forEach((limb, i) => {
+      const sign = i === 0 ? 1 : -1;
+      limb.rotation.x = sign * swing * cycle.stride;
+      shins[i].rotation.x = -lifts[i] * cycle.knee;
+      feet[i].rotation.x = lifts[i] * 0.55 * cycle.amount;
+    });
+    uppers.forEach((limb, i) => {
+      const sign = i === 0 ? -1 : 1;
+      if (i === 1 && punch) {
+        limb.rotation.x = 1.2 * punch;
+        forearms[i].rotation.x = punch > 0.2 ? 0.08 : 0.55;
+      } else {
+        limb.rotation.x = sign * swing * cycle.arm + (cycle.idle ? cycle.breath : 0);
+        forearms[i].rotation.x =
+          0.22 + Math.max(0, -sign * swing) * 0.45 * cycle.amount;
+      }
+    });
   };
+  g.userData.walk(0, 0);
   return g;
 }
