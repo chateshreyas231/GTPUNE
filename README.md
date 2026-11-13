@@ -1,4 +1,4 @@
-# City Rider
+# GTPUNE
 
 Neighbourhood rides in Pune. The service area is Pune only:
 
@@ -8,15 +8,17 @@ Neighbourhood rides in Pune. The service area is Pune only:
 
 ## Run
 
-Requires Node.js 20 or newer.
+Node.js 20+.
 
 ```bash
 npm start
 ```
 
-Open http://localhost:3000. Set `PORT` to listen somewhere else.
+Open http://localhost:3000.
 
-`GET /areas` returns the same service area as JSON.
+Pick a pickup and a dropoff, then request a ride. The page shows the fare, a driver, and the status as it moves through finding, arriving, on trip, and done. Set `PORT` to listen somewhere else.
+
+Fare is ₹30 plus ₹10 per kilometre: Kothrud–Karve Nagar 2 km (₹50), Karve Nagar–FC Road 5 km (₹80), Kothrud–FC Road 6 km (₹90).
 
 ## Check
 
@@ -26,7 +28,9 @@ npm test
 
 ## Layout
 
-- `src/areas.js` — City Rider's Pune service area
-- `src/server.js` — HTTP app
-- `src/index.js` — process entry
-- `test/` — service area and route checks
+- `src/areas.js` — GTPUNE's Pune service area
+- `src/fare.js` — fare for a route between two neighbourhoods
+- `src/rides.js` — in-memory ride, driver, and status
+- `src/server.js` — browser page and HTTP API
+- `src/index.js` — process entry for `npm start`
+- `test/` — fare, states, and routes

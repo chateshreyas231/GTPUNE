@@ -3,8 +3,8 @@ import { describe, it } from "node:test";
 import { serviceArea } from "../src/areas.js";
 
 describe("service area", () => {
-  it("is City Rider in Pune, limited to three neighbourhoods", () => {
-    assert.equal(serviceArea.product, "City Rider");
+  it("is GTPUNE in Pune, limited to three neighbourhoods", () => {
+    assert.equal(serviceArea.product, "GTPUNE");
     assert.equal(serviceArea.city, "Pune");
     assert.deepEqual(
       serviceArea.neighbourhoods.map((neighbourhood) => neighbourhood.name),
