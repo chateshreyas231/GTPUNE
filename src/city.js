@@ -3,6 +3,273 @@ export const origin = { lat: 18.5167, lon: 73.841 };
 export function project(lat, lon) {
   return [(lon - origin.lon) * 105500, -(lat - origin.lat) * 111320];
 }
+export function hashBuildingId(id) {
+  let hash = 2166136261;
+  const text = String(id ?? "");
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+const LOW_BUILDINGS = new Set([
+  "house",
+  "hut",
+  "shed",
+  "garage",
+  "roof",
+  "gazebo",
+  "guardhouse",
+  "bungalow",
+  "detached",
+  "retail",
+  "kiosk",
+  "service",
+  "cabin",
+]);
+const TALL_BUILDINGS = new Set([
+  "apartments",
+  "residential",
+  "commercial",
+  "office",
+  "hotel",
+  "dormitory",
+  "flats",
+  "hospital",
+  "college",
+  "university",
+  "public",
+  "train_station",
+]);
+function clampMeters(meters) {
+  return Math.min(120, Math.max(3, Math.round(meters * 10) / 10));
+}
+function storiesFor(id, kind = "yes") {
+  const hash = hashBuildingId(id);
+  const roll = hash % 100;
+  if (LOW_BUILDINGS.has(kind)) {
+    const base = 1 + (hash % 4);
+    return roll < 10 ? Math.min(6, base + 2) : base;
+  }
+  if (TALL_BUILDINGS.has(kind)) {
+    if (roll < 20) return 8 + (hash % 9);
+    return 2 + (hash % 5);
+  }
+  if (roll < 8) return 7 + (hash % 8);
+  return 1 + (hash % 6);
+}
+export function buildingHeight(id, tags = {}) {
+  const tagged = parseFloat(tags.height);
+  if (Number.isFinite(tagged) && tagged > 0) return clampMeters(tagged);
+  const levels = Number(tags["building:levels"]);
+  if (Number.isFinite(levels) && levels > 0) return clampMeters(levels * 3);
+  return clampMeters(storiesFor(id, tags.building) * 3);
+}
+const MASS_KINDS = ["setback", "shop", "awning", "balcony"];
+export function buildingMass(id) {
+  return MASS_KINDS[hashBuildingId(id) % MASS_KINDS.length];
+}
+export function openRing(points) {
+  if (!points?.length) return [];
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (points.length > 1 && first[0] === last[0] && first[1] === last[1])
+    return points.slice(0, -1);
+  return points.slice();
+}
+export function signedArea(points) {
+  const ring = openRing(points);
+  let area = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i];
+    const q = ring[(i + 1) % ring.length];
+    area += p[0] * q[1] - q[0] * p[1];
+  }
+  return area / 2;
+}
+export function offsetPolygon(points, distance) {
+  const ring = openRing(points);
+  const count = ring.length;
+  if (count < 3 || !distance) return ring.map((p) => [p[0], p[1]]);
+  const inward = signedArea(ring) >= 0 ? 1 : -1;
+  const dist = distance * inward;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const prev = ring[(i + count - 1) % count];
+    const cur = ring[i];
+    const next = ring[(i + 1) % count];
+    let e1x = cur[0] - prev[0];
+    let e1z = cur[1] - prev[1];
+    let e2x = next[0] - cur[0];
+    let e2z = next[1] - cur[1];
+    const len1 = Math.hypot(e1x, e1z) || 1;
+    const len2 = Math.hypot(e2x, e2z) || 1;
+    e1x /= len1;
+    e1z /= len1;
+    e2x /= len2;
+    e2z /= len2;
+    const n1x = -e1z;
+    const n1z = e1x;
+    const n2x = -e2z;
+    const n2z = e2x;
+    let bx = n1x + n2x;
+    let bz = n1z + n2z;
+    const bl = Math.hypot(bx, bz) || 1;
+    bx /= bl;
+    bz /= bl;
+    const cos = n1x * bx + n1z * bz;
+    const denom = Math.abs(cos) < 0.25 ? Math.sign(cos || 1) * 0.25 : cos;
+    let miter = dist / denom;
+    const cap = Math.abs(distance) * 3;
+    if (Math.abs(miter) > cap) miter = Math.sign(miter) * cap;
+    out.push([cur[0] + bx * miter, cur[1] + bz * miter]);
+  }
+  return out;
+}
+export function insetFootprint(points, distance) {
+  const ring = openRing(points);
+  const next = offsetPolygon(ring, distance);
+  const before = signedArea(ring);
+  const after = signedArea(next);
+  if (before * after <= 0) return null;
+  if (Math.abs(after) < Math.abs(before) * 0.28) return null;
+  return next;
+}
+function centroid(points) {
+  let x = 0;
+  let z = 0;
+  for (const p of points) {
+    x += p[0];
+    z += p[1];
+  }
+  return [x / points.length, z / points.length];
+}
+function edgeRecord(a, b, cx, cz) {
+  const dx = b[0] - a[0];
+  const dz = b[1] - a[1];
+  const length = Math.hypot(dx, dz) || 1;
+  const ex = dx / length;
+  const ez = dz / length;
+  let nx = -ez;
+  let nz = ex;
+  const mx = (a[0] + b[0]) / 2;
+  const mz = (a[1] + b[1]) / 2;
+  if ((mx - cx) * nx + (mz - cz) * nz < 0) {
+    nx = -nx;
+    nz = -nz;
+  }
+  const facesOut = nx * -ez + nz * ex >= 0;
+  const fx = facesOut ? ex : -ex;
+  const fz = facesOut ? ez : -ez;
+  return { length, mx, mz, nx, nz, angle: Math.atan2(-fz, fx) };
+}
+export function buildingEdges(points) {
+  const ring = openRing(points);
+  if (ring.length < 2) return [];
+  const [cx, cz] = centroid(ring);
+  const edges = [];
+  for (let i = 0; i < ring.length; i++) {
+    const edge = edgeRecord(ring[i], ring[(i + 1) % ring.length], cx, cz);
+    if (edge.length >= 0.4) edges.push(edge);
+  }
+  return edges;
+}
+function footprintSpan(points) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const p of points) {
+    minX = Math.min(minX, p[0]);
+    maxX = Math.max(maxX, p[0]);
+    minZ = Math.min(minZ, p[1]);
+    maxZ = Math.max(maxZ, p[1]);
+  }
+  return { width: maxX - minX, depth: maxZ - minZ };
+}
+function edgePiece(edge, width, height, depth, y, kind, tint, outset = 0) {
+  const span = Math.max(0.4, Math.min(width, edge.length * 0.92));
+  const push = depth / 2 + 0.05 + outset;
+  return {
+    kind,
+    width: span,
+    height,
+    depth,
+    tint,
+    x: edge.mx + edge.nx * push,
+    y,
+    z: edge.mz + edge.nz * push,
+    angle: edge.angle,
+  };
+}
+function balconyLevel(id, height) {
+  const stories = Math.max(1, Math.round(height / 3));
+  if (stories < 2) return Math.max(1.7, height * 0.55);
+  const level = 1 + (hashBuildingId(id) % (stories - 1));
+  return Math.min(height - 0.7, level * 3);
+}
+export function massPieces(building) {
+  const points = openRing(building.points);
+  const height = building.height;
+  const id = building.id ?? 0;
+  const mass = building.mass || buildingMass(id);
+  const tint = hashBuildingId(id) % 5;
+  const pieces = [{ kind: "footprint", points, height, y: 0, tint }];
+  if (points.length < 3 || !(height > 0)) return pieces;
+  if (mass === "setback") {
+    const ground = Math.min(3.2, Math.max(1.15, height * 0.36));
+    const span = footprintSpan(points);
+    const reach = Math.min(span.width, span.depth);
+    const inset =
+      Math.min(0.9, Math.max(0.28, reach * 0.14)) +
+      (hashBuildingId(id) % 3) * 0.08;
+    const upper =
+      insetFootprint(points, inset) || insetFootprint(points, inset * 0.5);
+    if (upper && height - ground > 0.7) {
+      pieces[0] = { kind: "footprint", points, height: ground, y: 0, tint };
+      pieces.push({
+        kind: "setback",
+        points: upper,
+        height: height - ground,
+        y: ground,
+        tint,
+      });
+    }
+    return pieces;
+  }
+  const edges = buildingEdges(points);
+  if (!edges.length) return pieces;
+  if (mass === "shop") {
+    for (const face of edges
+      .filter((edge) => edge.length >= 2)
+      .sort((a, b) => b.length - a.length)
+      .slice(0, 4))
+      pieces.push(
+        edgePiece(face, face.length * 0.92, 1.05, 0.16, 1.45, "shop", tint),
+      );
+    return pieces;
+  }
+  const long = edges.filter((edge) => edge.length >= 2.5);
+  const edge = (long.length ? long : edges)[
+    hashBuildingId(id) % (long.length || edges.length)
+  ];
+  if (mass === "awning") {
+    const depth = 0.85 + (hashBuildingId(id) % 4) * 0.12;
+    const y = Math.min(3.15, Math.max(2.4, height - 0.35));
+    pieces.push(
+      edgePiece(edge, edge.length * 0.88, 0.08, depth, y, "awning", tint),
+    );
+    return pieces;
+  }
+  const depth = 0.72 + (hashBuildingId(id) % 3) * 0.12;
+  const y = balconyLevel(id, height);
+  const width = Math.min(edge.length * 0.62, 7.5);
+  pieces.push(edgePiece(edge, width, 0.12, depth, y, "balcony", tint));
+  pieces.push(
+    edgePiece(edge, width, 0.08, 0.08, y + 0.42, "rail", tint, depth - 0.12),
+  );
+  return pieces;
+}
 export function fallbackCity() {
   const roads = [];
   for (let n = -600; n <= 600; n += 150) {
@@ -34,14 +301,18 @@ export function fallbackCity() {
           bz = z + 35 + Math.floor(j / 2) * 65;
         const w = 24 + rnd() * 18,
           d = 24 + rnd() * 18;
+        rnd();
+        const id = `ill-${x}-${z}-${j}`;
         buildings.push({
+          id,
           points: [
             [bx - w / 2, bz - d / 2],
             [bx + w / 2, bz - d / 2],
             [bx + w / 2, bz + d / 2],
             [bx - w / 2, bz + d / 2],
           ],
-          height: 9 + Math.floor(rnd() * 6) * 3,
+          height: buildingHeight(id, { building: "house" }),
+          mass: buildingMass(id),
           color: rnd(),
         });
       }
@@ -84,20 +355,17 @@ export function parseOSM(data) {
         width: ["primary", "trunk"].includes(e.tags.highway) ? 20 : 12,
         name: e.tags.name,
       });
-    if (e.tags.building && points.length >= 4)
+    if (e.tags.building && points.length >= 4) {
+      const id =
+        e.id ?? `${points[0][0].toFixed(2)},${points[0][1].toFixed(2)}`;
       buildings.push({
+        id,
         points,
-        height: Math.min(
-          120,
-          Math.max(
-            3,
-            parseFloat(e.tags.height) ||
-              Number(e.tags["building:levels"]) * 3 ||
-              12,
-          ),
-        ),
-        color: (e.id % 100) / 100,
+        height: buildingHeight(id, e.tags),
+        mass: buildingMass(id),
+        color: (hashBuildingId(id) % 1000) / 1000,
       });
+    }
   }
   if (!roads.length) throw Error("Map contains no driveable roads");
   const nearest = (p) => {

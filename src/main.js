@@ -13,6 +13,7 @@ import {
   makeCar,
   person,
   origin,
+  massPieces,
 } from "./city.js";
 const $ = (id) => document.getElementById(id);
 let city = fallbackCity();
@@ -185,6 +186,46 @@ const buildingMats = palette.map(
     new THREE.MeshStandardMaterial({ color: c, map: facadeTex, roughness: 1 }),
 );
 const roofMat = material(0x9b9b8b);
+const shopMats = [0x7a3030, 0x2f5a45, 0xc4893a, 0x3d4f78, 0x6a5344].map((c) =>
+  material(c),
+);
+const awningMats = [0x8d3a32, 0xc47a2c, 0x2f6a4a, 0x2c4f86, 0xe4d3a4].map((c) =>
+  material(c),
+);
+const balconyMat = material(0xc8c2b4);
+const railMat = material(0x6d7370);
+function extrudeFootprint(points, height, materials, y = 0) {
+  const shape = new THREE.Shape();
+  shape.moveTo(points[0][0], -points[0][1]);
+  for (let i = 1; i < points.length; i++)
+    shape.lineTo(points[i][0], -points[i][1]);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: height,
+    bevelEnabled: false,
+  });
+  geo.rotateX(-Math.PI / 2);
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i++)
+    uv.setXY(i, uv.getX(i) / 10, uv.getY(i) / 12);
+  const mesh = new THREE.Mesh(geo, materials);
+  mesh.position.y = y;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  buildingGroup.add(mesh);
+  return mesh;
+}
+function placeAccent(piece, mat) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(piece.width, piece.height, piece.depth),
+    mat,
+  );
+  mesh.position.set(piece.x, piece.y, piece.z);
+  mesh.rotation.y = piece.angle;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  buildingGroup.add(mesh);
+}
 const obstacles = city.buildings.map((b) => {
   const xs = b.points.map((p) => p[0]),
     zs = b.points.map((p) => p[1]);
@@ -213,25 +254,22 @@ function renderBuildings(cx, cz) {
     )
       continue;
     if (b.points.length < 3) continue;
-    const shape = new THREE.Shape();
-    shape.moveTo(b.points[0][0], -b.points[0][1]);
-    for (const p of b.points.slice(1)) shape.lineTo(p[0], -p[1]);
-    shape.closePath();
-    const geo = new THREE.ExtrudeGeometry(shape, {
-      depth: b.height,
-      bevelEnabled: false,
-    });
-    geo.rotateX(-Math.PI / 2);
-    const uv = geo.attributes.uv;
-    for (let i = 0; i < uv.count; i++)
-      uv.setXY(i, uv.getX(i) / 10, uv.getY(i) / 12);
-    const m = new THREE.Mesh(geo, [
-      roofMat,
-      buildingMats[Math.floor(b.color * 5) % 5],
-    ]);
-    m.castShadow = true;
-    m.receiveShadow = true;
-    buildingGroup.add(m);
+    const wall = buildingMats[Math.floor((b.color || 0) * 5) % 5];
+    for (const piece of massPieces(b)) {
+      if (piece.kind === "footprint" || piece.kind === "setback") {
+        extrudeFootprint(piece.points, piece.height, [roofMat, wall], piece.y);
+        continue;
+      }
+      const mat =
+        piece.kind === "shop"
+          ? shopMats[piece.tint % shopMats.length]
+          : piece.kind === "awning"
+            ? awningMats[piece.tint % awningMats.length]
+            : piece.kind === "rail"
+              ? railMat
+              : balconyMat;
+      placeAccent(piece, mat);
+    }
   }
   mergeStatic(buildingGroup);
   if (detailGroup) {
@@ -790,7 +828,9 @@ const mapLayers = {
 let mapZoom = 1;
 let mapSize = "dock";
 try {
-  const savedLayers = JSON.parse(localStorage.getItem("pune-map-layers") || "{}");
+  const savedLayers = JSON.parse(
+    localStorage.getItem("pune-map-layers") || "{}",
+  );
   Object.assign(mapLayers, savedLayers);
   mapZoom = Number(localStorage.getItem("pune-map-zoom")) || 1;
   mapSize = localStorage.getItem("pune-map-size") || "dock";
@@ -901,7 +941,12 @@ function drawMap() {
         minZ = Math.min(minZ, p[1]);
         maxZ = Math.max(maxZ, p[1]);
       }
-      if (maxX < viewMinX || minX > viewMaxX || maxZ < viewMinZ || minZ > viewMaxZ)
+      if (
+        maxX < viewMinX ||
+        minX > viewMaxX ||
+        maxZ < viewMinZ ||
+        minZ > viewMaxZ
+      )
         continue;
       map.lineWidth = Math.max(1.2, r.width * scale * 0.35);
       map.beginPath();
@@ -947,7 +992,13 @@ function drawMap() {
       const current = index === Math.min(targetIndex, city.stops.length - 1);
       map.fillStyle = current ? "#edbd6d" : "#8d7350";
       map.beginPath();
-      map.arc(sx(stop.point[0]), sy(stop.point[1]), current ? 6 : 4, 0, Math.PI * 2);
+      map.arc(
+        sx(stop.point[0]),
+        sy(stop.point[1]),
+        current ? 6 : 4,
+        0,
+        Math.PI * 2,
+      );
       map.fill();
       if (mapSize === "max" || current) {
         map.fillStyle = "#f6f3e6";
