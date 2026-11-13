@@ -26,6 +26,7 @@ export const VEHICLE_TONES = {
   "scooter-apron": { hornFreq: 587, hornType: "triangle", hornSeconds: 0.22, engineType: "sawtooth", engineBase: 96, engineSlide: 5.4, filter: 720 },
   moped: { hornFreq: 698, hornType: "sine", hornSeconds: 0.16, engineType: "square", engineBase: 146, engineSlide: 8.2, filter: 1100 },
   "geared-bike": { hornFreq: 440, hornType: "sawtooth", hornSeconds: 0.2, engineType: "sawtooth", engineBase: 74, engineSlide: 7.1, filter: 480 },
+  kavach: { hornFreq: 155, hornType: "sawtooth", hornSeconds: 0.48, engineType: "square", engineBase: 32, engineSlide: 1.1, filter: 110 },
 };
 
 export function fleetBody(index) {
@@ -291,6 +292,33 @@ function gearedBike(color) {
   g.userData.wheels = [front, rear];
   g.userData.tank = true;
   return finish(g, "geared-bike", [0.16, 0.32, 0.95]);
+}
+
+// Original tracked carrier. A squat hull and stub barrel, not a copy of a service vehicle.
+export function makeArmoredCarrier(color = 0x4e5a38) {
+  const { g, add, box, round, wheel, paint, dark, metal } = builder(color);
+  const wheels = [];
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 5; i += 1) wheels.push(wheel(side * 1.05, -1.35 + i * 0.67, 0.28));
+    box(0.32, 0.5, 3.55, dark, side * 1.08, 0.4, 0);
+  }
+  round(1.9, 0.62, 3.7, paint, 0, 0.78, 0.05, 0.08, "hull");
+  const nose = box(1.65, 0.38, 0.95, paint, 0, 0.92, -1.85);
+  nose.rotation.x = -0.42;
+  nose.name = "nose";
+  const turret = add(new THREE.CylinderGeometry(0.58, 0.68, 0.46, 12), paint, 0, 1.26, 0.2);
+  turret.name = "turret";
+  const barrel = add(new THREE.CylinderGeometry(0.08, 0.1, 1.15, 8), metal, 0, 1.3, -0.95);
+  barrel.rotation.x = Math.PI / 2;
+  barrel.name = "barrel";
+  box(0.55, 0.1, 0.14, dark, 0, 0.52, 1.95);
+  g.userData.wheels = wheels;
+  g.userData.body = "kavach";
+  g.userData.label = "Kavach Carrier";
+  g.userData.kind = "armor";
+  g.userData.exhaust = [0.72, 0.82, 1.85];
+  g.userData.tone = VEHICLE_TONES.kavach;
+  return g;
 }
 
 export function makeVehicle(body, color = 0xe5d6ae) {

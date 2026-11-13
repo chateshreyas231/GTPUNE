@@ -84,6 +84,10 @@
         </div>
       </section>
       <section id="dashboard">
+        <div id="vitals">
+          <div id="health" aria-live="polite"><span>HEALTH 3/3</span></div>
+          <div id="weapon">FISTS</div>
+        </div>
         <div id="mode">COMPACT / STREET</div>
         <div class="speed"><span id="speed">00</span><small>KM/H</small></div>
         <div class="speed-track"><i id="speed-bar"></i></div>
@@ -98,7 +102,7 @@
         </div>
         <div>
           <kbd>V</kbd> GIRL / BOY / MAN <kbd>C</kbd> CAMERA <kbd>H</kbd> HORN
-          <kbd>T</kbd> TALK <kbd>P</kbd> PAUSE
+          <kbd>T</kbd> TALK <kbd>1-4</kbd> WEAPONS <kbd>~</kbd> CHEATS <kbd>P</kbd> PAUSE
         </div>
         <div class="settings">
           <button id="audio">SOUND OFF</button
@@ -116,6 +120,16 @@
       <button data-key="w">↑</button><button data-key="a">←</button
       ><button data-key="s">↓</button><button data-key="d">→</button>
     </div>
+    <form id="cheat-box" hidden>
+      <label for="cheat-code">CHEAT</label>
+      <input
+        id="cheat-code"
+        maxlength="24"
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="Cheat code"
+      />
+    </form>
     <dialog id="instructions">
       <button id="close-help" aria-label="Close controls">✕</button>
       <div class="eyebrow">WELCOME TO THE NEIGHBOURHOOD</div>
@@ -127,8 +141,7 @@
         runs and Space jumps on foot; Space brakes in the car. E gets out
         of a stopped car, and gets into any car within 7 metres. V switches
         among the girl, the boy, and the man. C changes the camera.
-        H honks. T speaks with a nearby pedestrian. F picks up a pipe, a
-        stick, or a stone on the pavement and swings it. P pauses. Cars stop
+        H honks. T speaks with a nearby pedestrian. F punches or swings the selected weapon; 1–4 selects fists, pipe, stick, or stone. Tilde opens cheats. <span id="cheat-help"></span> P pauses. Cars stop
         for people. The map can be
         minimized or expanded. Drag the expanded map to move across Kothrud,
         Deccan, and FC Road, use the wheel to zoom, and RECENTER to follow

@@ -2,6 +2,7 @@
 
 export function bodyRadius(kind) {
   if (kind === "motorcycle") return 0.8;
+  if (kind === "armor") return 2.15;
   if (kind === "car" || kind === "player-car") return kind === "player-car" ? 1.35 : 1.25;
   return 0.45;
 }

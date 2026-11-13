@@ -974,6 +974,7 @@ export {
   CAR_ENTER_RANGE,
   makeVehicle,
   makeMotorcycle,
+  makeArmoredCarrier,
 } from "./vehicles.js";
 export {
   roadTitle,

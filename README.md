@@ -22,7 +22,10 @@ PORT=3001 npm start
 - V: switch the person on foot among the girl, the boy, and the man. The girl is the default.
 - C: cycle chase, close and overhead cameras.
 - H: horn; enable sound with the SOUND button first.
-- T: talk to a pedestrian within 22 m. Select Marathi, Hindi or English.
+- T: talk to a pedestrian within 22 m. They turn toward you and reply. Select Marathi, Hindi or English.
+- F: punch with fists, or swing the selected street weapon. Keys 1–4 switch fists, pipe, stick, and stone. A pipe, stick, and stone lie on the pavement near the start. A cheat can also hand you the next street weapon.
+- Health is shown on the dashboard. A vehicle can knock you down. It cannot kill you.
+- Tilde (~) opens a cheat box. The words are original to this game: `LOHAKATHI` gives a street weapon, `KAVACHVAN` parks an original armored carrier beside you, `NAVINMOTAR` parks a car beside you, and `JEEVANBHAR` refills health. On foot, E enters a nearby vehicle.
 - J / START DABBA DELIVERY: begin a timed ₹450 delivery. Stop at the marker, get out and press F to collect; repeat at FC Road to deliver. Completion saves the wallet locally.
 - 4K PHOTO: export a 3840 × 2160 scene PNG; normal rendering remains sized for your screen.
 - P: pause. The game also pauses on a hidden tab.
@@ -62,7 +65,7 @@ Requested references:
 
 Benglooru’s public site and controls documentation were inspected after network access was restored. Its public documentation describes a stylized OSM-based map, generated local voices, driving, walking and missions. Its source code and assets have not been copied into this project. The provided YouTube links remain inaccessible through the cloud proxy.
 
-The current result is a playable prototype, not a finished GTA-scale game or photorealistic digital twin. Next fidelity steps require licensed building imagery/3D models, terrain, animated rigged residents, native actor recordings, more advanced traffic simulation and further spatial batching. The engine currently models a flat city surface and generated building exteriors; it has no interiors, combat or multiplayer.
+The current result is a playable prototype, not a finished GTA-scale game or photorealistic digital twin. Next fidelity steps require licensed building imagery/3D models, terrain, animated rigged residents, native actor recordings, more advanced traffic simulation and further spatial batching. The engine currently models a flat city surface and generated building exteriors. Fists and street weapons are original meshes. The Kavach carrier is an original tracked hull, not a model from another game. There are no interiors or multiplayer.
 
 The selected first facade-reference target is **Goodluck Chowk toward Fergusson College**. Exact facade reconstruction awaits original overlapping video/photos or licensed reference assets. Current textures and props are illustrative; they do not establish the real colors or signs of those buildings.
 

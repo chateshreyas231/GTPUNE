@@ -33,6 +33,7 @@ import {
   STREET_FLEET,
   fleetBody,
   makeVehicle,
+  makeArmoredCarrier,
   VEHICLE_TONES,
   distanceGain,
   nearestCar,
@@ -50,6 +51,20 @@ import {
   GLASS_PLASTER,
   SHOP_BANDS,
 } from "./city.js";
+import {
+  CHEAT_WORDS,
+  emptyLoadout,
+  faceYaw,
+  grantWeapon,
+  healthLabel,
+  nearestReply,
+  nextStreetWeapon,
+  parkBeside,
+  readCheat,
+  refillHealth,
+  selectSlot,
+  selectedWeapon,
+} from "./street-fight.js";
 import {
   applyImpact,
   applyStrike,
@@ -664,6 +679,7 @@ player.rotation.y = spawnHeading;
 scene.add(player);
 player.position.set(city.spawn[0], 0, city.spawn[1]);
 const parkedCars = [];
+const spawnedRides = [];
 const avatar = new THREE.Group();
 avatar.userData.player = true;
 avatar.userData.look = defaultLook().id;
@@ -857,8 +873,18 @@ function makeStreetWeapon(id) {
   return group;
 }
 const weaponDrops = [];
-let heldWeapon = null;
+let loadout = emptyLoadout();
 let heldMesh = null;
+let attack = 0;
+const fist = new THREE.Mesh(
+  new THREE.SphereGeometry(0.07, 8, 8),
+  new THREE.MeshStandardMaterial({ color: 0xd6b08a, roughness: 0.65 }),
+);
+fist.position.set(0.28, 1.05, 0.22);
+fist.visible = false;
+fist.userData.attachment=true;
+fist.castShadow = true;
+avatar.add(fist);
 const weaponBase = spawnAnchor
   ? segmentPoint(
       spawnAnchor.segment,
@@ -1041,6 +1067,35 @@ const voicePlayer = new Audio();
 voicePlayer.volume = 0.9;
 const actor = () => (walking ? avatar : player);
 const playerBody = () => player.userData.body || "compact-suv";
+function drivenKind() {
+  return player.userData.kind === "armor" ? "armor" : "player-car";
+}
+function rideKind(mesh) {
+  if (mesh.userData.kind === "armor") return "armor";
+  if (mesh.userData.kind === "motorcycle") return "motorcycle";
+  return "car";
+}
+function vehicleObstacles(except = null) {
+  const meshes = [player, ...spawnedRides.map((ride) => ride.mesh)];
+  const list = [];
+  for (const mesh of meshes) {
+    if (mesh === except) continue;
+    list.push({
+      x: mesh.position.x,
+      z: mesh.position.z,
+      radius: bodyRadius(rideKind(mesh)),
+    });
+  }
+  return list;
+}
+function nearestVehicle(position, max = 7) {
+  let best = null;
+  for (const mesh of [player, ...spawnedRides.map((ride) => ride.mesh)]) {
+    const distance = Math.hypot(mesh.position.x - position.x, mesh.position.z - position.z);
+    if (distance <= max && (!best || distance < best.distance)) best = { mesh, distance };
+  }
+  return best;
+}
 function toast(text) {
   $("toast").textContent = text;
   $("toast").style.opacity = "1";
@@ -1136,19 +1191,32 @@ function honk() {
 let talkIndex = 0,
   dialogueTimer;
 function talk() {
-  const neighbour = pedestrians.find(
-    (p) => p.mesh.position.distanceTo(actor().position) < 22,
+  const here = actor().position;
+  const found = nearestReply(
+    pedestrians.map((ped) => ({
+      ped,
+      x: ped.x,
+      z: ped.z,
+      dead: ped.dead,
+      down: ped.down,
+    })),
+    here.x,
+    here.z,
   );
-  if (!neighbour) {
+  if (!found) {
     toast("Get within 22 metres of a pedestrian to talk.");
     return;
   }
+  const neighbour = found.person.ped;
+  neighbour.yaw = faceYaw(neighbour.x, neighbour.z, here.x, here.z);
+  neighbour.mesh.rotation.y = neighbour.yaw;
+  neighbour.replyUntil = elapsed + 4.5;
   const lang = $("language").value,
     clipIndex = talkIndex++ % 3,
     text = lines[lang][clipIndex];
   $("dialogue").replaceChildren();
   const label = document.createElement("small");
-  label.textContent = `${neighbour.mesh.userData.name || "NEIGHBOUR"} · शेजारी`;
+  label.textContent = `${neighbour.mesh.userData.name || "NEIGHBOUR"} REPLIES`;
   $("dialogue").append(label, document.createTextNode(text));
   $("dialogue").hidden = false;
   clearTimeout(dialogueTimer);
@@ -1162,6 +1230,7 @@ function talk() {
   }
 }
 function reset() {
+  player = player;
   player.position.set(city.spawn[0], 0, city.spawn[1]);
   speed = 0;
   yaw = spawnHeading;
@@ -1170,15 +1239,13 @@ function reset() {
   vy = 0;
   jumpQueued = false;
   walkVel.set(0, 0, 0);
-  playerLife.health = 3;
-  playerLife.down = false;
-  playerLife.dead = false;
-  playerLife.downUntil = null;
+  Object.assign(playerLife, refillHealth(playerLife));
   avatar.rotation.x = 0;
   walking = false;
   avatar.visible = false;
   avatar.position.y = 0;
   player.rotation.y = spawnHeading;
+  paintHealth();
   toast("Back in Deccan. The evening is yours.");
 }
 function carChoices() {
@@ -1389,38 +1456,74 @@ function hitPlayer(impact, dirX, dirZ) {
   avatar.position.x = next.x;
   avatar.position.z = next.z;
   layMesh(avatar);
+  paintHealth();
   toast(next.dead ? "You went down." : "You were knocked down.");
+}
+function paintHealth() {
+  const el = $("health");
+  if (!el) return;
+  const hp = playerLife.health;
+  el.replaceChildren();
+  const label = document.createElement("span");
+  label.textContent = healthLabel(hp);
+  el.append(label);
+  for (let i = 1; i <= 3; i += 1) {
+    const pip = document.createElement("i");
+    if (i <= hp) pip.className = "on";
+    el.append(pip);
+  }
+  const weapon = $("weapon");
+  if (weapon) weapon.textContent = selectedWeapon(loadout).name.toUpperCase();
+}
+function showHeld() {
+  if (heldMesh) {
+    avatar.remove(heldMesh);
+    heldMesh = null;
+  }
+  const weapon = selectedWeapon(loadout);
+  if (weapon.id !== "fists") {
+    heldMesh = makeStreetWeapon(weapon.id);
+    heldMesh.position.set(0.34, 1.02, 0.12);
+    heldMesh.rotation.y = 0.6;
+    avatar.add(heldMesh);
+  }
+  paintHealth();
+}
+function chooseSlot(slot) {
+  const next = selectSlot(loadout, slot);
+  if (!next.ok) {
+    toast(next.weapon ? `No ${next.weapon.name.toLowerCase()} yet.` : "Empty slot.");
+    return false;
+  }
+  loadout = next;
+  showHeld();
+  toast(next.weapon.name);
+  return true;
 }
 function takeOrSwing() {
   if (!walking || playerLife.dead || playerLife.down) {
     toast(playerLife.dead ? "You can't get up." : "Get out of the car first.");
     return;
   }
-  if (heldWeapon) {
-    swingWeapon();
-    return;
-  }
   const drop = weaponDrops.find(
     (item) =>
       !item.taken &&
+      !loadout.owned.includes(item.id) &&
       Math.hypot(item.x - avatar.position.x, item.z - avatar.position.z) < 1.6,
   );
-  if (!drop) {
-    toast("Nothing here to pick up.");
+  if (drop) {
+    loadout = grantWeapon(loadout, drop.id);
+    drop.taken = true;
+    drop.mesh.visible = false;
+    showHeld();
+    toast(`Picked up a ${selectedWeapon(loadout).name.toLowerCase()}. Number keys switch weapons.`);
     return;
   }
-  heldWeapon = pickupWeapon(drop.id);
-  drop.taken = true;
-  drop.mesh.visible = false;
-  if (heldMesh) avatar.remove(heldMesh);
-  heldMesh = makeStreetWeapon(drop.id);
-  heldMesh.userData.attachment = true;
-  heldMesh.position.set(0.34, 1.02, 0.12);
-  heldMesh.rotation.y = 0.6;
-  avatar.add(heldMesh);
-  toast(`Picked up a ${heldWeapon.name.toLowerCase()}. Press F to swing.`);
+  swingWeapon();
 }
 function swingWeapon() {
+  attack = 1;
+  const weapon = selectedWeapon(loadout);
   const fx = -Math.sin(avatar.rotation.y);
   const fz = -Math.cos(avatar.rotation.y);
   for (const ped of pedestrians) {
@@ -1429,7 +1532,7 @@ function swingWeapon() {
     const dz = ped.z - avatar.position.z;
     const distance = Math.hypot(dx, dz) || 1;
     const hit = strikeHit({
-      weapon: heldWeapon,
+      weapon,
       distance,
       facingDot: (dx * fx + dz * fz) / distance,
     });
@@ -1442,12 +1545,71 @@ function swingWeapon() {
     toast(
       next.dead
         ? `${ped.mesh.userData.name} went down.`
-        : `Hit ${ped.mesh.userData.name}.`,
+        : weapon.id === "fists"
+          ? `Punched ${ped.mesh.userData.name}.`
+          : `Hit ${ped.mesh.userData.name}.`,
     );
     return true;
   }
-  toast("Swung and missed.");
+  toast(weapon.id === "fists" ? "Punched and missed." : "Swung and missed.");
   return false;
+}
+function spawnRide(kind) {
+  const here = actor().position;
+  const facing = walking ? lookYaw : yaw;
+  const side = spawnedRides.length % 2 === 0 ? 1 : -1;
+  const distance = 5.5 + Math.floor(spawnedRides.length / 2) * 3.6;
+  const spot = parkBeside(here.x, here.z, facing, { distance, side });
+  const mesh =
+    kind === "armor" ? makeArmoredCarrier() : makeVehicle("compact-suv", 0xc96b4a);
+  mesh.position.set(spot.x, 0, spot.z);
+  mesh.rotation.y = spot.yaw;
+  scene.add(mesh);
+  parkedCars.push(mesh);
+  spawnedRides.push({ mesh, kind, x: spot.x, z: spot.z });
+  return { kind, x: spot.x, z: spot.z };
+}
+function applyCheat(text) {
+  const parsed = readCheat(text);
+  if (!parsed) {
+    toast("Unknown cheat.");
+    return false;
+  }
+  if (parsed.effect === "weapon") {
+    loadout = grantWeapon(loadout, nextStreetWeapon(loadout));
+    showHeld();
+    toast(`${selectedWeapon(loadout).name} ready. Number keys switch weapons.`);
+  } else if (parsed.effect === "armor") {
+    spawnRide("armor");
+    toast("Kavach carrier parked beside you. Walk up to it and press E.");
+  } else if (parsed.effect === "car") {
+    spawnRide("car");
+    toast("A car is parked beside you. Walk up to it and press E.");
+  } else if (parsed.effect === "health") {
+    Object.assign(playerLife, refillHealth(playerLife));
+    if (walking) standMesh(avatar);
+    paintHealth();
+    toast("Health refilled.");
+  }
+  return parsed.effect;
+}
+let cheatOpen = false;
+function openCheat() {
+  if (!active || $("instructions").open) return;
+  cheatOpen = true;
+  keys.clear();
+  $("cheat-box").hidden = false;
+  $("cheat-code").value = "";
+  $("cheat-code").focus();
+  requestAnimationFrame(() => {
+    if (cheatOpen) $("cheat-code").value = "";
+  });
+}
+function closeCheat() {
+  cheatOpen = false;
+  $("cheat-box").hidden = true;
+  $("cheat-code").blur();
+  $("world").focus();
 }
 function startJob() {
   if (job && ["pickup", "delivery"].includes(job.phase)) {
@@ -1497,6 +1659,7 @@ function action(key) {
     if (job && ["pickup", "delivery"].includes(job.phase)) interactJob();
     else takeOrSwing();
   }
+  if (key >= "1" && key <= "4") chooseSlot(Number(key));
   if (key === "j") startJob();
   if (key === "c") {
     view = (view + 1) % 3;
@@ -1508,6 +1671,12 @@ function action(key) {
     jumpQueued = true;
 }
 window.addEventListener("keydown", (e) => {
+  if (e.code === "Backquote" || e.key === "`" || e.key === "~") {
+    e.preventDefault();
+    if (cheatOpen) closeCheat();
+    else openCheat();
+    return;
+  }
   if (
     ["INPUT", "SELECT"].includes(e.target.tagName) ||
     (e.target.tagName === "BUTTON" && [" ", "Enter"].includes(e.key)) ||
@@ -1519,6 +1688,22 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
   if (!e.repeat) action(k);
   keys.add(k);
+});
+$("cheat-box").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const value = $("cheat-code").value;
+  $("cheat-code").value = "";
+  applyCheat(value);
+  closeCheat();
+});
+$("cheat-code").addEventListener("keydown", (e) => {
+  if (e.key === "Escape" || e.code === "Backquote" || e.key === "`" || e.key === "~") {
+    e.preventDefault();
+    e.stopPropagation();
+    closeCheat();
+    return;
+  }
+  e.stopPropagation();
 });
 window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 window.addEventListener("blur", () => keys.clear());
@@ -2027,6 +2212,7 @@ function animate() {
         blocksMove(nx, nz, 0.45, [
           ...vehicleSolids(null),
           ...pedestrians.map((ped) => ({ x: ped.x, z: ped.z, radius: 0.45 })),
+          ...vehicleObstacles(),
         ]);
       if (!blocked) {
         p.x = nx;
@@ -2066,12 +2252,12 @@ function animate() {
       const hitTraffic = blocksMove(
         nx,
         nz,
-        bodyRadius("player-car"),
+        bodyRadius(drivenKind()),
         vehicleSolids(player),
       );
       const victim = pedestrians.find(
         (t) =>
-          Math.hypot(nx - t.x, nz - t.z) < bodyRadius("player-car") + bodyRadius("person"),
+          Math.hypot(nx - t.x, nz - t.z) < bodyRadius(drivenKind()) + bodyRadius("person"),
       );
       if (victim && !victim.down && Math.abs(speed) >= 1.5) {
         const dx = nx - p.x,
@@ -2102,6 +2288,8 @@ function animate() {
       } else if (!hitTraffic && !victim) speed = -speed * 0.15;
       else speed = 0;
       player.rotation.y = yaw;
+      if (player.userData.wheels)
+        for (const wheel of player.userData.wheels) wheel.rotation.x -= speed * dt * 2.4;
       emitSmoke(player, Math.abs(speed), dt, player.userData);
     }
     const limit = city.source === "illustrative" ? 900 : 6500;
@@ -2190,6 +2378,12 @@ function animate() {
       }
       if (!resumeWalking(ped, elapsed)) {
         ped.mesh.position.set(ped.x || 0, 0.2, ped.z || 0);
+        ped.mesh.userData.walk?.(0, 0);
+        continue;
+      }
+      if (ped.replyUntil && elapsed < ped.replyUntil) {
+        ped.mesh.position.set(ped.x || 0, 0, ped.z || 0);
+        ped.mesh.rotation.y = ped.yaw || 0;
         ped.mesh.userData.walk?.(0, 0);
         continue;
       }
@@ -2321,6 +2515,13 @@ function animate() {
   sun.target.position.set(p.x, 0, p.z);
   sun.target.updateMatrixWorld();
   marker.rotation.y += dt * 0.3;
+  if (attack > 0) {
+    attack = Math.max(0, attack - dt * 3.4);
+    if (heldMesh) heldMesh.rotation.x = -attack * 1.35;
+    const punching = selectedWeapon(loadout).id === "fists" && attack > 0;
+    fist.visible = punching;
+    fist.position.z = 0.22 + attack * 0.55;
+  }
   if (frame++ % 4 === 0) {
     drawMap();
     $("speed").textContent = String(Math.round(Math.abs(speed) * 3.6)).padStart(
@@ -2338,6 +2539,7 @@ function animate() {
           ? `${who} · RUN`
           : `${who} · WALK`
       : player.userData.label || "COMPACT SUV";
+    paintHealth();
     const nearest = city.stops.reduce((a, b) =>
       Math.hypot(p.x - a.point[0], p.z - a.point[1]) <
       Math.hypot(p.x - b.point[0], p.z - b.point[1])
@@ -2367,6 +2569,19 @@ window.addEventListener("resize", () => {
   composer.setSize(innerWidth, innerHeight);
 });
 // Read-only diagnostics for smoke tests and performance inspection.
+const cheatHelp = $("cheat-help");
+if (cheatHelp) {
+  const labels = {
+    weapon: "street weapon",
+    armor: "armored carrier",
+    car: "parked car",
+    health: "refill health",
+  };
+  cheatHelp.textContent = Object.entries(CHEAT_WORDS)
+    .map(([word, effect]) => `${word} (${labels[effect]})`)
+    .join(" · ");
+}
+paintHealth();
 window.__pune = {
   get state() {
     return {
@@ -2412,7 +2627,14 @@ window.__pune = {
       lookName: lookById(lookId).name,
       lookLabel: lookById(lookId).label,
       blood: bloodMarks.map((mark) => ({ x: mark.x, z: mark.z })),
-      held: heldWeapon?.id || null,
+      held: selectedWeapon(loadout).id,
+      owned: [...loadout.owned],
+      spawned: spawnedRides.map((ride) => ({
+        kind: ride.kind,
+        x: ride.mesh.position.x,
+        z: ride.mesh.position.z,
+      })),
+      healthText: $("health")?.innerText || "",
       downPeople: pedestrians.filter((ped) => ped.down).length,
       deadPeople: pedestrians.filter((ped) => ped.dead).length,
       mapSize: mapView.size,
@@ -2471,18 +2693,17 @@ window.__pune = {
       avatar.visible = true;
       playerLife.down = false;
       playerLife.dead = false;
-      heldWeapon = pickupWeapon(id);
-      if (heldMesh) avatar.remove(heldMesh);
-      heldMesh = makeStreetWeapon(id);
-      heldMesh.userData.attachment = true;
-      heldMesh.position.set(0.34, 1.02, 0.12);
-      avatar.add(heldMesh);
+      loadout = grantWeapon(loadout, id);
+      showHeld();
       const drop = weaponDrops.find((item) => item.id === id);
       if (drop) {
         drop.taken = true;
         drop.mesh.visible = false;
       }
-      return heldWeapon?.id || null;
+      return selectedWeapon(loadout).id;
+    },
+    cheat(text) {
+      return applyCheat(text);
     },
     focus(name) {
       const ped = pedestrians.find((person) => person.mesh.userData.name === name);
