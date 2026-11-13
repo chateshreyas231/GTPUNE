@@ -12,6 +12,7 @@ const files = new Map([
   ["/missions.js", "src/missions.js"],
   ["/save.js", "src/save.js"],
   ["/areas.js", "src/areas.js"],
+  ["/street.js", "src/street.js"],
   ["/vendor/three/three.module.js", "vendor/three/three.module.js"],
   ["/vendor/rapier/rapier.es.js", "vendor/rapier/rapier.es.js"],
   ["/vendor/rapier/rapier_wasm3d_bg.wasm", "vendor/rapier/rapier_wasm3d_bg.wasm"],

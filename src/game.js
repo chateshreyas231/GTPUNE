@@ -2,6 +2,7 @@ import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { interactAt } from "./missions.js";
 import { emptySave, parseSave } from "./save.js";
+import { buildStreet, moodColors, setStreetMood, tickStreet } from "./street.js";
 
 const SAVE_KEY = "gtpune-save";
 const FIXED = 1 / 60;
@@ -67,28 +68,31 @@ function progressOf() {
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x9ec7ea);
-scene.fog = new THREE.Fog(0x9ec7ea, 28, 95);
+scene.background = new THREE.Color(0xc5d8ea);
+scene.fog = new THREE.Fog(0xc5d8ea, 40, 155);
 
-const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 200);
-const sun = new THREE.DirectionalLight(0xfff1d6, 1.2);
-sun.position.set(18, 28, 10);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 500);
+const sun = new THREE.DirectionalLight(0xfff1d6, 1.35);
+sun.position.set(32, 48, 18);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
-sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 80;
-sun.shadow.camera.left = -40;
-sun.shadow.camera.right = 40;
-sun.shadow.camera.top = 40;
-sun.shadow.camera.bottom = -40;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.00025;
+sun.shadow.camera.near = 8;
+sun.shadow.camera.far = 120;
+sun.shadow.camera.left = -48;
+sun.shadow.camera.right = 48;
+sun.shadow.camera.top = 48;
+sun.shadow.camera.bottom = -48;
 scene.add(sun);
 scene.add(sun.target);
 const ambient = new THREE.HemisphereLight(0xc5dff5, 0x8a6a45, 0.55);
 scene.add(ambient);
-const lampLights = [];
 
 const rainCount = 700;
 const rainPositions = new Float32Array(rainCount * 3);
@@ -103,86 +107,6 @@ scene.add(rain);
 let world;
 let player;
 let rides = [];
-
-function box(parent, hx, hy, hz, color, x, y, z, opts = {}) {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.86 }),
-  );
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-  if (opts.solid !== false) {
-    const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y, z));
-    world.createCollider(RAPIER.ColliderDesc.cuboid(hx, hy, hz).setFriction(opts.friction ?? 0.9), body);
-  }
-  return mesh;
-}
-
-function sign(text, x, y, z, color, rotY = 0) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 64;
-  const g = canvas.getContext("2d");
-  g.fillStyle = color;
-  g.fillRect(0, 0, 256, 64);
-  g.fillStyle = "#1c1917";
-  g.font = "bold 28px sans-serif";
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.fillText(text, 128, 32);
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.2, 0.8),
-    new THREE.MeshStandardMaterial({
-      map: new THREE.CanvasTexture(canvas),
-      roughness: 0.7,
-      side: THREE.DoubleSide,
-    }),
-  );
-  mesh.position.set(x, y, z);
-  mesh.rotation.y = rotY;
-  scene.add(mesh);
-  return mesh;
-}
-
-function makeTree(x, z) {
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.15, 0.2, 1.6, 6),
-    new THREE.MeshStandardMaterial({ color: 0x6b4f35 }),
-  );
-  trunk.position.set(x, 0.8, z);
-  trunk.castShadow = true;
-  const crown = new THREE.Mesh(
-    new THREE.SphereGeometry(1.1, 8, 6),
-    new THREE.MeshStandardMaterial({ color: 0x3f6b3a, roughness: 0.9 }),
-  );
-  crown.position.set(x, 2.1, z);
-  crown.castShadow = true;
-  scene.add(trunk, crown);
-  const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, 0.8, z));
-  world.createCollider(RAPIER.ColliderDesc.cylinder(0.8, 0.2), body);
-}
-
-function makeLamp(x, z) {
-  const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.06, 0.08, 3.2, 6),
-    new THREE.MeshStandardMaterial({ color: 0x292524 }),
-  );
-  pole.position.set(x, 1.6, z);
-  const head = new THREE.Mesh(
-    new THREE.BoxGeometry(0.45, 0.16, 0.28),
-    new THREE.MeshStandardMaterial({ color: 0xf5e6b8, emissive: 0x000000 }),
-  );
-  head.position.set(x, 3.25, z);
-  scene.add(pole, head);
-  const light = new THREE.PointLight(0xffc56b, 0, 8, 2);
-  light.position.set(x, 3.1, z);
-  scene.add(light);
-  lampLights.push({ head, light });
-  const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, 1.6, z));
-  world.createCollider(RAPIER.ColliderDesc.cylinder(1.6, 0.08), body);
-}
 
 function makeVehicle(spec) {
   const body = world.createRigidBody(
@@ -256,53 +180,7 @@ function makeVehicle(spec) {
 }
 
 function buildCity() {
-  box(scene, 70, 0.5, 70, 0xc4b48a, 0, -0.5, 0, { friction: 1.1 });
-  box(scene, 46, 0.01, 4, 0x3e4852, 0, 0.02, 0, { solid: false });
-  box(scene, 4, 0.01, 22, 0x3e4852, 20, 0.02, 0, { solid: false });
-  box(scene, 50, 0.09, 2.1, 0xd5c4a1, 0, 0.09, -6.2);
-  box(scene, 50, 0.09, 2.1, 0xd5c4a1, 0, 0.09, 6.2);
-
-  const blocks = [
-    [-30, -14, 6, 4, 4.5, 0x6b5142],
-    [-16, -14, 5.5, 4, 5.5, 0x5c4638],
-    [-2, -14, 6, 4, 4, 0x6b5142],
-    [14, -14, 7, 4, 5, 0x4e4338],
-    [-28, 15, 5, 4, 3.5, 0x7a5b46],
-    [28, 16, 6, 4, 6, 0x5a4638],
-    [10, 13, 4, 3, 2.6, 0x1e3a5f],
-  ];
-  for (const [x, z, hx, hz, h, color] of blocks) {
-    box(scene, hx, h, hz, color, x, h, z);
-  }
-
-  box(scene, 1.1, 1.2, 1, 0x9a3412, -6, 1.2, 7.6);
-  sign("CHAI", -6, 2.6, 6.5, "#fdba74");
-  sign("COLLEGE STRIP", -16, 6.2, -9.7, "#f3e6c8");
-  sign("BOOKS", 10, 4.2, 9.6, "#dbeafe");
-
-  const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.08, 0.1, 3.4, 6),
-    new THREE.MeshStandardMaterial({ color: 0x292524 }),
-  );
-  pole.position.set(16.4, 1.7, -2.2);
-  const lamp = new THREE.Mesh(
-    new THREE.SphereGeometry(0.22, 8, 8),
-    new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x7f1d1d }),
-  );
-  lamp.position.set(16.4, 3.4, -2.2);
-  scene.add(pole, lamp);
-  const signalBody = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(16.4, 1.7, -2.2));
-  world.createCollider(RAPIER.ColliderDesc.cylinder(1.7, 0.1), signalBody);
-
-  for (const [x, z] of [[-24, 10], [-18, -3], [2, 10], [26, -8], [32, 8], [-36, 4]]) makeTree(x, z);
-  for (const [x, z] of [[-10, -4.2], [8, -4.2], [24, 4.2], [-20, 4.2]]) makeLamp(x, z);
-
-  const bench = new THREE.Mesh(
-    new THREE.BoxGeometry(1.6, 0.12, 0.45),
-    new THREE.MeshStandardMaterial({ color: 0x7c4a32 }),
-  );
-  bench.position.set(-2, 0.45, 5.4);
-  scene.add(bench);
+  buildStreet(scene, world, RAPIER);
 }
 
 function makePlayer(x, y, z) {
@@ -316,16 +194,22 @@ function makePlayer(x, y, z) {
   controller.setSlideEnabled(true);
   const mesh = new THREE.Group();
   const torso = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.28, 0.7, 4, 8),
+    new THREE.CapsuleGeometry(0.22, 0.46, 4, 8),
     new THREE.MeshStandardMaterial({ color: 0x0f766e }),
   );
+  torso.position.y = 0.15;
   torso.castShadow = true;
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xc48a62, roughness: 0.7 }),
+  );
+  head.position.y = 0.62;
   const bag = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 0.28, 0.12),
+    new THREE.BoxGeometry(0.2, 0.26, 0.1),
     new THREE.MeshStandardMaterial({ color: 0x92400e }),
   );
-  bag.position.set(0.22, 0.1, -0.12);
-  mesh.add(torso, bag);
+  bag.position.set(0.2, 0.12, -0.12);
+  mesh.add(torso, head, bag);
   scene.add(mesh);
   return { body, collider, controller, mesh };
 }
@@ -345,20 +229,16 @@ function nearestRide(position) {
 }
 
 function applyWeather() {
-  const night = save.night;
-  sun.intensity = night ? 0.08 : save.rain ? 0.55 : 1.25;
-  ambient.intensity = night ? 0.18 : 0.55;
-  const sky = night ? 0x101722 : save.rain ? 0x6e7d8a : 0x9ec7ea;
-  scene.background.set(sky);
-  scene.fog.color.set(sky);
-  scene.fog.near = save.rain ? 16 : 28;
-  scene.fog.far = save.rain ? 55 : 95;
+  const mood = moodColors(save.night, save.rain);
+  sun.intensity = mood.sun;
+  ambient.intensity = mood.ambient;
+  scene.background.set(mood.sky);
+  scene.fog.color.set(mood.sky);
+  scene.fog.near = mood.near;
+  scene.fog.far = mood.far;
   rain.visible = save.rain;
-  for (const lamp of lampLights) {
-    lamp.light.intensity = night ? 2.2 : 0;
-    lamp.head.material.emissive.set(night ? 0xf5c56b : 0x000000);
-  }
-  weatherEl.textContent = `${night ? "Night" : "Day"}${save.rain ? " · Rain" : ""}`;
+  setStreetMood(save.night, save.rain);
+  weatherEl.textContent = `${save.night ? "Night" : "Day"}${save.rain ? " · Rain" : ""}`;
 }
 
 function refreshHud() {
@@ -602,6 +482,7 @@ function loop(now) {
   }
   accumulator = Math.min(accumulator, FIXED);
   stepRain();
+  tickStreet(now);
   frameCamera();
   refreshHud();
   publish();
