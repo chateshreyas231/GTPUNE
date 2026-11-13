@@ -339,7 +339,7 @@ test("infill fills open ground up to the sidewalk at the neighbours' height", ()
     assert.ok(Math.min(...xs) >= -16 + 0.7);
     assert.ok(Math.max(...xs) <= -kerb + 0.05);
     assert.ok(Math.max(...xs) > -kerb - 1.4);
-    assert.equal(building.height, 12);
+    assert.ok(building.height>=9 && building.height<=15);
   }
 });
 

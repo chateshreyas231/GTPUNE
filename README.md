@@ -26,6 +26,8 @@ PORT=3001 npm start
 - F: punch with fists, or swing the selected street weapon. Keys 1–4 switch fists, pipe, stick, and stone. A pipe, stick, and stone lie on the pavement near the start. A cheat can also hand you the next street weapon.
 - Health is shown on the dashboard. A vehicle can knock you down. It cannot kill you.
 - Tilde (~) opens a cheat box. The words are original to this game: `LOHAKATHI` gives a street weapon, `KAVACHVAN` parks an original armored carrier beside you, `NAVINMOTAR` parks a car beside you, and `JEEVANBHAR` refills health. On foot, E enters a nearby vehicle.
+- ~ : cheat line. `bazaar` adds pedestrians, `rushhour` adds traffic, and `monsoon` cycles the weather (drizzle, monsoon rain, blue hour, clear).
+- While you play, the city can stall a car in the lane, gather a small crowd at a tea stall, or leave a scooter broken down at the side of the road.
 - J / START DABBA DELIVERY: begin a timed ₹450 delivery. Stop at the marker, get out and press F to collect; repeat at FC Road to deliver. Completion saves the wallet locally.
 - 4K PHOTO: export a 3840 × 2160 scene PNG; normal rendering remains sized for your screen.
 - P: pause. The game also pauses on a hidden tab.
