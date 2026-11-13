@@ -281,9 +281,16 @@ function shopSpot(b) {
   const dx = best.b[0] - best.a[0], dz = best.b[1] - best.a[1], len2 = dx * dx + dz * dz || 1;
   const t = Math.max(0, Math.min(1, ((x - best.a[0]) * dx + (z - best.a[1]) * dz) / len2));
   const qx = best.a[0] + dx * t, qz = best.a[1] + dz * t;
-  const vx = x - qx, vz = z - qz, vlen = Math.hypot(vx, vz) || 1;
-  const edge = best.width / 2 + 1.6;
-  return { x: qx + (vx / vlen) * edge, z: qz + (vz / vlen) * edge, angle: best.angle };
+  const toRoadX = qx - x, toRoadZ = qz - z, vlen = Math.hypot(toRoadX, toRoadZ) || 1;
+  let sx = x, sz = z, walked = 0;
+  while (walked < 80 && sx >= b.minX && sx <= b.maxX && sz >= b.minZ && sz <= b.maxZ) {
+    walked += 0.5;
+    sx = x + (toRoadX / vlen) * walked;
+    sz = z + (toRoadZ / vlen) * walked;
+  }
+  sx += (toRoadX / vlen) * 1.2;
+  sz += (toRoadZ / vlen) * 1.2;
+  return { x: sx, z: sz, angle: Math.atan2(toRoadX, toRoadZ) + Math.PI / 2 };
 }
 function refreshSigns(cx, cz) {
   for (const mesh of [...signGroup.children]) {
@@ -297,9 +304,9 @@ function refreshSigns(cx, cz) {
     if (dist > 140) continue;
     const named = Boolean(b.name);
     if (!named && !isShopFront(b)) continue;
-    let score = dist / 40;
-    if (b.shop === "mall" || /mall|college|hospital/i.test(b.name || "")) score -= 8;
-    else if (named) score -= 3;
+    let score = dist;
+    if (b.shop === "mall" || /mall|college|hospital/i.test(b.name || "")) score -= 25;
+    else if (named) score -= 10;
     near.push({ b, score, label: named ? b.name : frontageName(b) });
   }
   near.sort((a, c) => a.score - c.score);
@@ -313,8 +320,9 @@ function refreshSigns(cx, cz) {
       new THREE.PlaneGeometry(width, width / 4),
       new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, side: THREE.DoubleSide }),
     );
-    mesh.position.set(spot.x, 2.4, spot.z);
+    mesh.position.set(spot.x, 3.1, spot.z);
     mesh.rotation.y = spot.angle;
+    mesh.name = item.label;
     signGroup.add(mesh);
   }
   signCenter.set(cx, cz);
@@ -568,12 +576,38 @@ function vehiclePoint(t) {
     angle: r.angle + (t.direction === 1 ? Math.PI : 0),
   };
 }
+const nearbyTraffic = trafficRoads
+  .map((r) => ({
+    r,
+    d: Math.hypot((r.a[0] + r.b[0]) / 2 - city.spawn[0], (r.a[1] + r.b[1]) / 2 - city.spawn[1]),
+  }))
+  .filter((item) => item.d < 180)
+  .sort((a, b) => a.d - b.d)
+  .slice(0, 12)
+  .map((item) => item.r);
+const spawnAlong = (() => {
+  const dx = spawnRoad.b[0] - spawnRoad.a[0], dz = spawnRoad.b[1] - spawnRoad.a[1];
+  return Math.max(0, Math.min(1, ((city.spawn[0] - spawnRoad.a[0]) * dx + (city.spawn[1] - spawnRoad.a[1]) * dz) / (dx * dx + dz * dz || 1)));
+})();
 for (let i = 0; i < trafficTarget; i++) {
   const spec = vehicleSpec(i);
-  const r = trafficRoads[(i * 97) % trafficRoads.length];
+  const lead = i < 8 && (spec.kind === "bus" || spec.kind === "auto");
+  const ahead = spawnAlong > 0.35;
+  const r = lead
+    ? spawnRoad
+    : i < 24 && nearbyTraffic.length
+      ? nearbyTraffic[i % nearbyTraffic.length]
+      : trafficRoads[(i * 97) % trafficRoads.length];
   const mesh = makeVehicle(spec);
   const actorState = {
-    mesh, segment: r, s: (i * 0.137) % 1, direction: i % 2 ? 1 : -1,
+    mesh,
+    segment: r,
+    s: lead
+      ? (ahead
+        ? Math.max(0.02, spawnAlong - (spec.kind === "bus" ? 28 : 14) / spawnRoad.length)
+        : Math.min(0.98, spawnAlong + (spec.kind === "bus" ? 28 : 14) / spawnRoad.length))
+      : (i * 0.137) % 1,
+    direction: lead ? (ahead ? -1 : 1) : i % 2 ? 1 : -1,
     speed: spec.kind === "bike" ? 11 : spec.kind === "bus" ? 7 : spec.kind === "auto" ? 8 : 9,
     kind: spec.kind, label: spec.label, board: spec.board, livery: spec.livery, route: spec.route,
     goal: null, trip: null, cursor: 0, rng: mulberry32(4000 + i * 17), minLength: 90, minGoal: 160,
@@ -1421,6 +1455,7 @@ window.__pune = {
       autos: traffic.filter((t) => t.kind === "auto").length,
       bikes: traffic.filter((t) => t.kind === "bike").length,
       places: places.length,
+      signs: signGroup.children.map((mesh) => mesh.name),
     };
   },
 };
