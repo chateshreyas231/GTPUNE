@@ -2,6 +2,22 @@ import { createDelivery, tickDelivery, interactDelivery } from "./delivery.js";
 import { streetDetails, swayCanopies } from "./street-details.js";
 import { loadSurfacePhotos, hydrateResidents } from "./visual-assets.js";
 import { lines } from "./dialogue.js";
+import {
+  planTraffic,
+  makeVehicle,
+  createSmoke,
+  stepSmoke,
+  playHorn,
+  createEnginePool,
+  updateEnginePool,
+  engineSpec,
+} from "./vehicles.js";
+import {
+  placesFromElements,
+  supplementPlaces,
+  makePlace,
+  PLACE_MARKS,
+} from "./places.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import "./style.css";
@@ -17,13 +33,18 @@ import {
 } from "./city.js";
 const $ = (id) => document.getElementById(id);
 let city = fallbackCity();
+let osmElements = [];
 try {
   const r = await fetch("/data/pune-osm.json");
-  if (r.ok && r.headers.get("content-type")?.includes("json"))
-    city = parseOSM(await r.json());
+  if (r.ok && r.headers.get("content-type")?.includes("json")) {
+    const data = await r.json();
+    osmElements = Array.isArray(data.elements) ? data.elements : [];
+    city = parseOSM(data);
+  }
 } catch (e) {
   console.warn("Using illustrative map:", e.message);
 }
+city.places = supplementPlaces(placesFromElements(osmElements));
 const surfacePhotos = await loadSurfacePhotos();
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc6c8ac);
@@ -406,6 +427,21 @@ function mergeStatic(root) {
   }
 }
 mergeStatic(scene);
+for (const place of city.places) {
+  for (let step = 0; step < 6; step++) {
+    const hit = obstacles.find((b) =>
+      inside(place.point[0], place.point[1], b.points),
+    );
+    if (!hit) break;
+    place.point = [
+      hit.maxX + (place.kind === "ground" ? 18 : 9),
+      (hit.minZ + hit.maxZ) / 2,
+    ];
+  }
+}
+const placeGroup = new THREE.Group();
+for (const place of city.places) placeGroup.add(makePlace(place));
+scene.add(placeGroup);
 renderBuildings(city.spawn[0], city.spawn[1]);
 const spawnRoad = roadSegments.reduce((a, b) =>
   segmentDistance(...city.spawn, a.a, a.b) <
@@ -468,21 +504,75 @@ for (const r of roadSegments)
 const traffic = [];
 const driveable = roadSegments.filter((r) => r.length > 45);
 const trafficRoads = driveable.length ? driveable : roadSegments;
+const nearTrafficRoads = trafficRoads.filter(
+  (r) => segmentDistance(city.spawn[0], city.spawn[1], r.a, r.b) < 500,
+);
+const localTrafficRoads =
+  nearTrafficRoads.length >= 8 ? nearTrafficRoads : trafficRoads;
 const trafficTarget = Math.min(96, Math.max(48, trafficRoads.length));
-for (let i = 0; i < trafficTarget; i++) {
-  const r = trafficRoads[(i * 97) % trafficRoads.length];
-  const m = makeCar(
-    [0xa7b7b3, 0xe3dac4, 0x678e92, 0xa4523f, 0xd7c4a2, 0x6e8b74][i % 6],
-    i % 5 === 0,
+const trafficPlan = planTraffic(trafficTarget);
+const trafficColors = [
+  0xa7b7b3, 0xe3dac4, 0x678e92, 0xa4523f, 0xd7c4a2, 0x6e8b74, 0xc45a3a,
+  0x314e6b, 0xd8d2c4,
+];
+function seatTraffic(t) {
+  const r = t.road,
+    dx = (r.b[0] - r.a[0]) / r.length,
+    dz = (r.b[1] - r.a[1]) / r.length,
+    f = t.direction === 1 ? t.t : 1 - t.t,
+    lane = (t.class === "bike" ? 0.34 : 0.18) * r.width * t.direction;
+  t.mesh.position.set(
+    r.a[0] + dx * r.length * f + dz * lane,
+    0,
+    r.a[1] + dz * r.length * f - dx * lane,
   );
-  scene.add(m);
-  traffic.push({
-    mesh: m,
+  t.mesh.rotation.y = r.angle + (t.direction === 1 ? Math.PI : 0);
+}
+function trafficTooClose(entry) {
+  if (
+    Math.hypot(
+      entry.mesh.position.x - city.spawn[0],
+      entry.mesh.position.z - city.spawn[1],
+    ) < 16
+  )
+    return true;
+  return traffic.some((other) => {
+    const gap = entry.class === "bike" && other.class === "bike" ? 3.2 : 5.5;
+    return (
+      Math.hypot(
+        entry.mesh.position.x - other.mesh.position.x,
+        entry.mesh.position.z - other.mesh.position.z,
+      ) < gap
+    );
+  });
+}
+for (let i = 0; i < trafficPlan.length; i++) {
+  const id = trafficPlan[i];
+  const pool = i % 5 === 4 ? trafficRoads : localTrafficRoads;
+  const r = pool[(i * 97) % pool.length];
+  const mesh = makeVehicle(id, trafficColors[i % trafficColors.length]);
+  const smoke = createSmoke(mesh, mesh.userData.tail || 1.6);
+  scene.add(mesh);
+  const entry = {
+    id,
+    label: mesh.userData.label,
+    class: mesh.userData.class,
+    mesh,
+    smoke,
     road: r,
     t: (i * 0.137) % 1,
     direction: i % 2 ? 1 : -1,
-    speed: 6.5 + (i % 7) * 1.15,
-  });
+    speed: (mesh.userData.class === "bike" ? 9.2 : 6.4) + (i % 5) * 1.05,
+    hornIn: 1.2 + (i % 8) * 0.55,
+    moved: false,
+  };
+  seatTraffic(entry);
+  for (let n = 0; n < 14 && trafficTooClose(entry); n++) {
+    if (n === 8) entry.road = pool[(i * 53 + n) % pool.length];
+    entry.t = (entry.t + 0.08) % 1;
+    seatTraffic(entry);
+  }
+  traffic.push(entry);
 }
 let detailedHumans = 0;
 hydrateResidents([
@@ -531,7 +621,8 @@ let active = false,
   distanceTravelled = 0;
 const keys = new Set();
 let previousTime = performance.now();
-let audioContext, engine, engineGain, toastTimer;
+let audioContext, engine, engineGain, enginePool, toastTimer;
+let hornGap = 0;
 const voicePlayer = new Audio();
 voicePlayer.volume = 0.9;
 const actor = () => (walking ? avatar : player);
@@ -546,22 +637,25 @@ function enableSound() {
   $("audio").textContent = sound ? "SOUND ON" : "SOUND OFF";
   if (sound && !audioContext) {
     audioContext = new AudioContext();
+    const spec = engineSpec("city-car");
     engine = audioContext.createOscillator();
     engineGain = audioContext.createGain();
-    engine.type = "sawtooth";
+    engine.type = spec.wave;
     const filter = audioContext.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.value = 170;
+    filter.frequency.value = spec.filter;
     engine.connect(filter);
     filter.connect(engineGain);
     engineGain.connect(audioContext.destination);
     engineGain.gain.value = 0;
     engine.start();
+    enginePool = createEnginePool(audioContext, 6);
   }
   if (sound) audioContext.resume();
   else {
     voicePlayer.pause();
     window.speechSynthesis?.cancel();
+    if (enginePool) updateEnginePool(enginePool, []);
   }
 }
 function honk() {
@@ -569,16 +663,7 @@ function honk() {
     toast("Turn sound on to hear the horn and engine.");
     return;
   }
-  const o = audioContext.createOscillator(),
-    g = audioContext.createGain();
-  o.frequency.value = 370;
-  o.type = "triangle";
-  o.connect(g);
-  g.connect(audioContext.destination);
-  g.gain.setValueAtTime(0.08, audioContext.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.35);
-  o.start();
-  o.stop(audioContext.currentTime + 0.36);
+  playHorn(audioContext, "city-car", 0);
 }
 let talkIndex = 0,
   dialogueTimer;
@@ -815,7 +900,9 @@ const mapLayers = {
 let mapZoom = 1;
 let mapSize = "dock";
 try {
-  const savedLayers = JSON.parse(localStorage.getItem("pune-map-layers") || "{}");
+  const savedLayers = JSON.parse(
+    localStorage.getItem("pune-map-layers") || "{}",
+  );
   Object.assign(mapLayers, savedLayers);
   mapZoom = Number(localStorage.getItem("pune-map-zoom")) || 1;
   mapSize = localStorage.getItem("pune-map-size") || "dock";
@@ -926,7 +1013,12 @@ function drawMap() {
         minZ = Math.min(minZ, p[1]);
         maxZ = Math.max(maxZ, p[1]);
       }
-      if (maxX < viewMinX || minX > viewMaxX || maxZ < viewMinZ || minZ > viewMaxZ)
+      if (
+        maxX < viewMinX ||
+        minX > viewMaxX ||
+        maxZ < viewMinZ ||
+        minZ > viewMaxZ
+      )
         continue;
       map.lineWidth = Math.max(1.2, r.width * scale * 0.35);
       map.beginPath();
@@ -942,10 +1034,16 @@ function drawMap() {
       const x = t.mesh.position.x;
       const z = t.mesh.position.z;
       if (!visible(x, z)) continue;
+      const bike = t.class === "bike";
       map.save();
       map.translate(sx(x), sy(z));
       map.rotate(-t.mesh.rotation.y);
-      map.fillRect(-3.5, -2, 7, 4);
+      map.fillRect(
+        bike ? -2 : -3.5,
+        bike ? -1.1 : -2,
+        bike ? 4 : 7,
+        bike ? 2.2 : 4,
+      );
       map.restore();
     }
   }
@@ -972,7 +1070,13 @@ function drawMap() {
       const current = index === Math.min(targetIndex, city.stops.length - 1);
       map.fillStyle = current ? "#edbd6d" : "#8d7350";
       map.beginPath();
-      map.arc(sx(stop.point[0]), sy(stop.point[1]), current ? 6 : 4, 0, Math.PI * 2);
+      map.arc(
+        sx(stop.point[0]),
+        sy(stop.point[1]),
+        current ? 6 : 4,
+        0,
+        Math.PI * 2,
+      );
       map.fill();
       if (mapSize === "max" || current) {
         map.fillStyle = "#f6f3e6";
@@ -980,6 +1084,26 @@ function drawMap() {
         map.fillText(stop.name, sx(stop.point[0]) + 8, sy(stop.point[1]) - 6);
       }
     });
+    for (const place of city.places) {
+      const x = sx(place.point[0]);
+      const y = sy(place.point[1]);
+      if (x < -40 || y < -40 || x > w + 40 || y > h + 40) continue;
+      const mark = PLACE_MARKS[place.kind];
+      map.fillStyle = mark.color;
+      if (mark.shape === "diamond") {
+        map.beginPath();
+        map.moveTo(x, y - 6);
+        map.lineTo(x + 5, y);
+        map.lineTo(x, y + 6);
+        map.lineTo(x - 5, y);
+        map.closePath();
+        map.fill();
+      } else if (mark.shape === "square") map.fillRect(x - 4, y - 4, 8, 8);
+      else map.fillRect(x - 7, y - 3.5, 14, 7);
+      map.fillStyle = "#f6f3e6";
+      map.font = `${Math.max(10, w / 58)}px sans-serif`;
+      map.fillText(place.name, x + 9, y - 5);
+    }
   }
   map.fillStyle = "rgba(246, 243, 230, 0.85)";
   map.font = `${Math.max(12, w / 40)}px sans-serif`;
@@ -1028,11 +1152,10 @@ function animate() {
     const p = actor().position,
       nx = p.x - Math.sin(yaw) * speed * dt,
       nz = p.z - Math.cos(yaw) * speed * dt;
-    const hitTraffic = traffic.some(
-      (t) =>
-        Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) <
-        (walking ? 1.8 : 3),
-    );
+    const hitTraffic = traffic.some((t) => {
+      const reach = walking ? 1.1 : t.class === "bike" ? 1.7 : 2.8;
+      return Math.hypot(nx - t.mesh.position.x, nz - t.mesh.position.z) < reach;
+    });
     const hitPed =
       !walking &&
       pedestrians.some(
@@ -1056,6 +1179,7 @@ function animate() {
       const old = t.t,
         oldRoad = t.road,
         oldDirection = t.direction;
+      t.moved = false;
       t.t += (dt * (t.speed || 8)) / t.road.length;
       if (t.t > 1) {
         const endpoint = t.direction === 1 ? t.road.b : t.road.a;
@@ -1071,25 +1195,38 @@ function animate() {
       const r = t.road,
         dx = (r.b[0] - r.a[0]) / r.length,
         dz = (r.b[1] - r.a[1]) / r.length,
-        f = t.direction === 1 ? t.t : 1 - t.t;
-      const x = r.a[0] + dx * r.length * f + dz * r.width * 0.22 * t.direction,
-        z = r.a[1] + dz * r.length * f - dx * r.width * 0.22 * t.direction;
-      if (
-        Math.hypot(x - p.x, z - p.z) < 7 ||
-        traffic.some(
-          (other) =>
-            other !== t &&
-            Math.hypot(x - other.mesh.position.x, z - other.mesh.position.z) <
-              4.5,
-        )
-      ) {
+        f = t.direction === 1 ? t.t : 1 - t.t,
+        lane = (t.class === "bike" ? 0.34 : 0.18) * r.width * t.direction;
+      const x = r.a[0] + dx * r.length * f + dz * lane,
+        z = r.a[1] + dz * r.length * f - dx * lane;
+      const near = Math.hypot(x - p.x, z - p.z) < 220;
+      const yaw = r.angle + (t.direction === 1 ? Math.PI : 0);
+      const fx = -Math.sin(yaw);
+      const fz = -Math.cos(yaw);
+      const blocked =
+        Math.hypot(x - p.x, z - p.z) < (t.class === "bike" ? 2.4 : 4.2) ||
+        traffic.some((other) => {
+          if (other === t) return false;
+          const ox = other.mesh.position.x - x;
+          const oz = other.mesh.position.z - z;
+          const gap =
+            (t.class === "bike" ? 1.5 : 3.2) +
+            (other.class === "bike" ? 1.2 : 2.6);
+          return Math.hypot(ox, oz) < gap && ox * fx + oz * fz > 0.8;
+        });
+      if (blocked) {
         t.t = old;
         t.road = oldRoad;
         t.direction = oldDirection;
+        if (near) stepSmoke(t.smoke, dt, false);
         continue;
       }
+      t.moved = true;
       t.mesh.position.set(x, 0, z);
       t.mesh.rotation.y = r.angle + (t.direction === 1 ? Math.PI : 0);
+      if (near) stepSmoke(t.smoke, dt, true);
+      else if (t.smoke.puffs.some((puff) => puff.visible))
+        stepSmoke(t.smoke, dt, false);
     }
     for (const p of pedestrians) {
       p.mesh.position.copy(p.start);
@@ -1169,16 +1306,48 @@ function animate() {
     }
   }
   if (engineGain) {
+    const spec = engineSpec("city-car");
     engineGain.gain.setTargetAtTime(
-      sound && running && !walking ? 0.018 : 0,
+      sound && running && !walking ? 0.02 : 0,
       audioContext.currentTime,
       0.1,
     );
     engine.frequency.setTargetAtTime(
-      42 + Math.abs(speed) * 4,
+      spec.base + Math.abs(speed) * spec.rev,
       audioContext.currentTime,
       0.1,
     );
+  }
+  if (enginePool) {
+    const hear = [];
+    if (sound && running) {
+      const here = actor().position;
+      hornGap -= dt;
+      let horn = null;
+      for (const t of traffic) {
+        const d = Math.hypot(
+          t.mesh.position.x - here.x,
+          t.mesh.position.z - here.z,
+        );
+        if (d < 70)
+          hear.push({
+            id: t.id,
+            distance: d,
+            speed: t.moved ? t.speed : t.speed * 0.35,
+          });
+        if (d > 55) continue;
+        t.hornIn -= dt;
+        if (t.hornIn > 0) continue;
+        t.hornIn = 4 + (t.mesh.id % 6) * 0.7;
+        if (!horn || d < horn.d) horn = { id: t.id, d };
+      }
+      if (horn && hornGap <= 0) {
+        playHorn(audioContext, horn.id, horn.d);
+        hornGap = 1.1;
+      }
+    }
+    hear.sort((a, b) => a.distance - b.distance);
+    updateEnginePool(enginePool, hear.slice(0, 6));
   }
   const p = actor().position;
   if (Math.hypot(p.x - buildingCenter.x, p.z - buildingCenter.y) > 300)
@@ -1260,6 +1429,17 @@ window.__pune = {
       wallet,
       voiceLocale: $("language").value,
       nearbyBuildingBatches: buildingGroup.children.length,
+      trafficCars: traffic.filter((t) => t.class === "car").length,
+      trafficBikes: traffic.filter((t) => t.class === "bike").length,
+      trafficMoving: traffic.filter((t) => t.moved).length,
+      trafficTypes: [...new Set(traffic.map((t) => t.label))],
+      places: city.places.map((p) => ({ kind: p.kind, name: p.name })),
+      smoke: traffic.reduce(
+        (n, t) =>
+          n +
+          t.smoke.puffs.filter((puff) => puff.material.opacity > 0.05).length,
+        0,
+      ),
     };
   },
 };

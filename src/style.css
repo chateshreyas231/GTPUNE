@@ -340,6 +340,20 @@ footer {
   background: #edbd6d;
   border-radius: 50%;
 }
+.map-legend .fuel {
+  background: #e07a3d;
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+}
+.map-legend .gym {
+  background: #5aa7c4;
+}
+.map-legend .ground {
+  background: #7dce6a;
+  width: 11px;
+  height: 6px;
+}
 .map-bottom {
   padding: 10px;
   font-size: 6px;

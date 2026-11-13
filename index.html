@@ -52,8 +52,12 @@
         <div class="map-label">
           <span>पुणे <b>/ PUNE</b></span>
           <span class="map-actions">
-            <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
-            <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
+            <button id="map-zoom-out" type="button" aria-label="Zoom out">
+              −
+            </button>
+            <button id="map-zoom-in" type="button" aria-label="Zoom in">
+              +
+            </button>
             <button id="map-min" type="button">MIN</button>
             <button id="map-size" type="button">EXPAND</button>
           </span>
@@ -65,17 +69,31 @@
           aria-label="Street map with you, traffic, people, buildings, and places"
         ></canvas>
         <div class="map-options" id="map-options">
-          <label><input id="layer-roads" type="checkbox" checked /> Roads</label>
-          <label><input id="layer-buildings" type="checkbox" checked /> Buildings</label>
-          <label><input id="layer-traffic" type="checkbox" checked /> Traffic</label>
-          <label><input id="layer-people" type="checkbox" checked /> People</label>
-          <label><input id="layer-places" type="checkbox" checked /> Places</label>
+          <label
+            ><input id="layer-roads" type="checkbox" checked /> Roads</label
+          >
+          <label
+            ><input id="layer-buildings" type="checkbox" checked />
+            Buildings</label
+          >
+          <label
+            ><input id="layer-traffic" type="checkbox" checked /> Traffic</label
+          >
+          <label
+            ><input id="layer-people" type="checkbox" checked /> People</label
+          >
+          <label
+            ><input id="layer-places" type="checkbox" checked /> Places</label
+          >
         </div>
         <div class="map-legend">
           <span><i class="you"></i> You</span>
           <span><i class="car"></i> Traffic</span>
           <span><i class="person"></i> People</span>
           <span><i class="place"></i> Places</span>
+          <span><i class="fuel"></i> Fuel</span>
+          <span><i class="gym"></i> Gym</span>
+          <span><i class="ground"></i> Ground</span>
         </div>
         <div class="map-bottom">
           <span id="map-source">ILLUSTRATIVE CITY · NOT SURVEYED</span
@@ -127,8 +145,9 @@
         places.
       </p>
       <p>
-        Visit the three amber markers on your evening run. Use “Return to
-        Deccan” if you get stuck.
+        Visit the three amber markers on your evening run. Fuel pumps, gyms, and
+        playing grounds are marked on the map and built along the streets. Use
+        “Return to Deccan” if you get stuck.
       </p>
       <p class="disclosure">
         Prototype: generated buildings, approximate streets and fictional
