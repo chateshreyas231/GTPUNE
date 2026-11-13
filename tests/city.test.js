@@ -6,6 +6,8 @@ import {
   project,
   segmentDistance,
   inside,
+  gaitCycle,
+  punchEnvelope,
 } from "../src/city.js";
 test("fallback city is deterministic and includes a playable route", () => {
   const a = fallbackCity();
@@ -50,6 +52,23 @@ test("OSM importer uses footprints and height and snaps spawn to roads", () => {
 });
 test("empty map cannot silently activate real-map mode", () =>
   assert.throws(() => parseOSM({ elements: [] }), /no driveable roads/));
+test("gait follows speed from idle through a walk into a run", () => {
+  const idle = gaitCycle(1, 0);
+  const walk = gaitCycle(1, 1.6);
+  const run = gaitCycle(1, 5.2);
+  assert.equal(idle.idle, true);
+  assert.equal(idle.stride, 0);
+  assert.equal(idle.knee, 0);
+  assert.ok(walk.amount > 0.9);
+  assert.ok(walk.run < 0.05);
+  assert.ok(run.run > 0.9);
+  assert.ok(run.stride > walk.stride);
+  assert.ok(run.knee > walk.knee);
+  assert.ok(run.lean > walk.lean);
+  assert.equal(punchEnvelope(0), 0);
+  assert.ok(punchEnvelope(0.9) < 0);
+  assert.ok(punchEnvelope(0.4) > 0.5);
+});
 test("collision geometry handles corners and polygon interiors", () => {
   assert.equal(segmentDistance(2, 2, [0, 0], [0, 4]), 2);
   assert.ok(
