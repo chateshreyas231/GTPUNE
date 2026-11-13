@@ -4,7 +4,7 @@ export default defineConfig({
   workers: 1,
   timeout: 60000,
   use: {
-    baseURL: "http://127.0.0.1:3001",
+    baseURL: "http://127.0.0.1:3002",
     viewport: { width: 1440, height: 1000 },
     launchOptions: {
       executablePath: "/usr/bin/chromium",
@@ -16,8 +16,8 @@ export default defineConfig({
     },
   },
   webServer: {
-    command: "PORT=3001 npm start",
-    url: "http://127.0.0.1:3001",
+    command: "PORT=3002 npm start",
+    url: "http://127.0.0.1:3002",
     reuseExistingServer: false,
   },
 });

@@ -8,6 +8,7 @@ import {
   inside,
   makeCar,
   person,
+  origin,
 } from "./city.js";
 const $ = (id) => document.getElementById(id);
 let city = fallbackCity();
@@ -28,7 +29,12 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.6));
 renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
+const gl = renderer.getContext(),
+  debug = gl.getExtension("WEBGL_debug_renderer_info");
+const softwareGPU =
+  debug &&
+  /swiftshader|llvmpipe/i.test(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL));
+renderer.shadowMap.enabled = !softwareGPU;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -44,7 +50,7 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffd59b, 3.5);
 sun.position.set(-170, 240, 80);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, {
   left: -180,
   right: 180,
@@ -86,22 +92,46 @@ for (const road of city.roads)
       x = (a[0] + b[0]) / 2,
       z = (a[1] + b[1]) / 2;
     roadSegments.push({ a, b, width: road.width, length, angle });
-    box(road.width + 5, 0.2, length, mats.walk, x, 0, z).rotation.y = angle;
-    box(road.width, 0.08, length + 0.1, mats.road, x, 0.15, z).rotation.y =
+  }
+const roadGroup = new THREE.Group();
+scene.add(roadGroup);
+function renderRoads(cx, cz) {
+  for (const mesh of [...roadGroup.children]) {
+    mesh.geometry.dispose();
+    roadGroup.remove(mesh);
+  }
+  for (const r of roadSegments) {
+    if (segmentDistance(cx, cz, r.a, r.b) > 1000) continue;
+    const { a, b, width, length, angle } = r,
+      x = (a[0] + b[0]) / 2,
+      z = (a[1] + b[1]) / 2;
+    box(width + 5, 0.2, length, mats.walk, x, 0, z, roadGroup).rotation.y =
       angle;
-    for (let t = 6; t < length; t += 18) {
-      const l = box(
+    box(
+      width,
+      0.08,
+      length + 0.1,
+      mats.road,
+      x,
+      0.15,
+      z,
+      roadGroup,
+    ).rotation.y = angle;
+    for (let t = 6; t < length; t += 18)
+      box(
         0.17,
         0.03,
         5,
         mats.mark,
-        a[0] + (dx * t) / length,
+        a[0] + ((b[0] - a[0]) * t) / length,
         0.2,
-        a[1] + (dz * t) / length,
-      );
-      l.rotation.y = angle;
-    }
+        a[1] + ((b[1] - a[1]) * t) / length,
+        roadGroup,
+      ).rotation.y = angle;
   }
+  mergeStatic(roadGroup);
+}
+
 function facade() {
   const c = document.createElement("canvas");
   c.width = 128;
@@ -133,37 +163,54 @@ const buildingMats = palette.map(
     new THREE.MeshStandardMaterial({ color: c, map: facadeTex, roughness: 1 }),
 );
 const roofMat = material(0x9b9b8b);
-const obstacles = [];
-for (const b of city.buildings) {
-  if (b.points.length < 3) continue;
-  const shape = new THREE.Shape();
-  shape.moveTo(b.points[0][0], -b.points[0][1]);
-  for (const p of b.points.slice(1)) shape.lineTo(p[0], -p[1]);
-  shape.closePath();
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: b.height,
-    bevelEnabled: false,
-  });
-  geo.rotateX(-Math.PI / 2);
-  const uv = geo.attributes.uv;
-  for (let i = 0; i < uv.count; i++)
-    uv.setXY(i, uv.getX(i) / 22, uv.getY(i) / 15);
-  const m = new THREE.Mesh(geo, [
-    roofMat,
-    buildingMats[Math.floor(b.color * 5) % 5],
-  ]);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  scene.add(m);
+const obstacles = city.buildings.map((b) => {
   const xs = b.points.map((p) => p[0]),
     zs = b.points.map((p) => p[1]);
-  obstacles.push({
+  return {
     ...b,
     minX: Math.min(...xs),
     maxX: Math.max(...xs),
     minZ: Math.min(...zs),
     maxZ: Math.max(...zs),
-  });
+  };
+});
+const buildingGroup = new THREE.Group();
+scene.add(buildingGroup);
+let buildingCenter = new THREE.Vector2(Infinity, Infinity);
+function renderBuildings(cx, cz) {
+  for (const mesh of [...buildingGroup.children]) {
+    mesh.geometry.dispose();
+    buildingGroup.remove(mesh);
+  }
+  buildingCenter.set(cx, cz);
+  renderRoads(cx, cz);
+  for (const b of obstacles) {
+    if (
+      Math.hypot((b.minX + b.maxX) / 2 - cx, (b.minZ + b.maxZ) / 2 - cz) > 900
+    )
+      continue;
+    if (b.points.length < 3) continue;
+    const shape = new THREE.Shape();
+    shape.moveTo(b.points[0][0], -b.points[0][1]);
+    for (const p of b.points.slice(1)) shape.lineTo(p[0], -p[1]);
+    shape.closePath();
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: b.height,
+      bevelEnabled: false,
+    });
+    geo.rotateX(-Math.PI / 2);
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++)
+      uv.setXY(i, uv.getX(i) / 22, uv.getY(i) / 15);
+    const m = new THREE.Mesh(geo, [
+      roofMat,
+      buildingMats[Math.floor(b.color * 5) % 5],
+    ]);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    buildingGroup.add(m);
+  }
+  mergeStatic(buildingGroup);
 }
 function sign(text, x, z, angle = 0) {
   const c = document.createElement("canvas");
@@ -246,51 +293,69 @@ if (city.source === "illustrative") {
 for (const stop of city.stops)
   sign(stop.name, stop.point[0] + 18, stop.point[1] + 12);
 // Merge static scenery by material to keep draw calls low on integrated GPUs.
-const batches = new Map();
-for (const object of [...scene.children]) {
-  if (!object.isMesh) continue;
-  object.updateMatrixWorld();
-  const source = object.geometry.index
-    ? object.geometry.toNonIndexed()
-    : object.geometry;
-  const groups = Array.isArray(object.material)
-    ? source.groups
-    : [{ start: 0, count: source.attributes.position.count, materialIndex: 0 }];
-  for (const group of groups) {
-    const mat = Array.isArray(object.material)
-      ? object.material[group.materialIndex]
-      : object.material;
-    const geometry = new THREE.BufferGeometry();
-    for (const name of ["position", "normal", "uv"]) {
-      const attr = source.attributes[name];
-      if (attr)
-        geometry.setAttribute(
-          name,
-          new THREE.BufferAttribute(
-            attr.array.slice(
-              group.start * attr.itemSize,
-              (group.start + group.count) * attr.itemSize,
+function mergeStatic(root) {
+  const batches = new Map();
+  for (const object of [...root.children]) {
+    if (!object.isMesh) continue;
+    object.updateMatrixWorld();
+    const source = object.geometry.index
+      ? object.geometry.toNonIndexed()
+      : object.geometry;
+    const groups = Array.isArray(object.material)
+      ? source.groups
+      : [
+          {
+            start: 0,
+            count: source.attributes.position.count,
+            materialIndex: 0,
+          },
+        ];
+    for (const group of groups) {
+      const mat = Array.isArray(object.material)
+        ? object.material[group.materialIndex]
+        : object.material;
+      const geometry = new THREE.BufferGeometry();
+      for (const name of ["position", "normal", "uv"]) {
+        const attr = source.attributes[name];
+        if (attr)
+          geometry.setAttribute(
+            name,
+            new THREE.BufferAttribute(
+              attr.array.slice(
+                group.start * attr.itemSize,
+                (group.start + group.count) * attr.itemSize,
+              ),
+              attr.itemSize,
             ),
-            attr.itemSize,
-          ),
-        );
+          );
+      }
+      geometry.applyMatrix4(object.matrixWorld);
+      if (!batches.has(mat)) batches.set(mat, []);
+      batches.get(mat).push(geometry);
     }
-    geometry.applyMatrix4(object.matrixWorld);
-    if (!batches.has(mat)) batches.set(mat, []);
-    batches.get(mat).push(geometry);
+    root.remove(object);
+    object.geometry.dispose();
   }
-  scene.remove(object);
-  object.geometry.dispose();
+  for (const [mat, geometries] of batches) {
+    const geometry = mergeGeometries(geometries);
+    const mesh = new THREE.Mesh(geometry, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    root.add(mesh);
+    for (const g of geometries) g.dispose();
+  }
 }
-for (const [mat, geometries] of batches) {
-  const geometry = mergeGeometries(geometries);
-  const mesh = new THREE.Mesh(geometry, mat);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
-  for (const g of geometries) g.dispose();
-}
+mergeStatic(scene);
+renderBuildings(city.spawn[0], city.spawn[1]);
+const spawnRoad = roadSegments.reduce((a, b) =>
+  segmentDistance(...city.spawn, a.a, a.b) <
+  segmentDistance(...city.spawn, b.a, b.b)
+    ? a
+    : b,
+);
+const spawnHeading = city.source === "OpenStreetMap" ? spawnRoad.angle : 0;
 const player = makeCar(0xe5d6ae);
+player.rotation.y = spawnHeading;
 scene.add(player);
 player.position.set(city.spawn[0], 0, city.spawn[1]);
 const avatar = person(3);
@@ -358,7 +423,7 @@ let active = false,
   paused = false,
   walking = false,
   speed = 0,
-  yaw = 0,
+  yaw = spawnHeading,
   view = 0,
   sound = false,
   night = false,
@@ -464,10 +529,10 @@ function talk() {
 function reset() {
   player.position.set(city.spawn[0], 0, city.spawn[1]);
   speed = 0;
-  yaw = 0;
+  yaw = spawnHeading;
   walking = false;
   avatar.visible = false;
-  player.rotation.y = 0;
+  player.rotation.y = spawnHeading;
   toast("Back in Deccan. The evening is yours.");
 }
 function toggleWalk() {
@@ -754,6 +819,8 @@ function animate() {
     );
   }
   const p = actor().position;
+  if (Math.hypot(p.x - buildingCenter.x, p.z - buildingCenter.y) > 300)
+    renderBuildings(p.x, p.z);
   if (active) {
     const back = view === 1 ? 5 : view === 2 ? 18 : 13,
       height = view === 1 ? 3 : view === 2 ? 42 : 7;
@@ -791,6 +858,9 @@ function animate() {
         : b,
     );
     $("district").textContent = nearest.name;
+    if (city.source === "OpenStreetMap")
+      document.querySelector(".location small").textContent =
+        `${(origin.lat - p.z / 111320).toFixed(4)}° N · ${(origin.lon + p.x / 105500).toFixed(4)}° E`;
   }
   renderer.render(scene, camera);
 }
@@ -815,6 +885,9 @@ window.__pune = {
       mapSource: city.source,
       targetIndex,
       drawCalls: renderer.info.render.calls,
+      roads: city.roads.length,
+      buildings: city.buildings.length,
+      nearbyBuildingBatches: buildingGroup.children.length,
     };
   },
 };

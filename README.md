@@ -29,15 +29,16 @@ Traffic follows road segments and yields near the player. Buildings, pedestrians
 
 ## Real Pune map data
 
-The shipped fallback is a compact, illustrative grid. It is **not an accurate reconstruction** of Kothrud, FC Road or Deccan. Buildings are procedural and do not reproduce real facades. The in-game label identifies which data source is active.
+A bundled OpenStreetMap extract covers 18.490–18.540 N, 73.785–73.852 E: Kothrud through Deccan and FC Road. It contains 6,042 road ways and 19,850 building footprints, downloaded from the official OSM map API in nine bounded exports. The game loads nearby building geometry within about 900 m and refreshes it as you travel. Roads and footprints follow the source data; facades, road widths, vegetation and untagged heights remain generated. Building multipolygon relations and terrain elevation are not modeled yet.
 
 ```sh
 npm run map:fetch
+npm run build
 ```
 
-This fetches OpenStreetMap road centerlines and building outlines for the bounding box 18.490–18.540 N, 73.785–73.852 E from `overpass-api.de`. It covers Kothrud through Deccan and FC Road. Requires network access to that host. The result is saved to ignored `public/data/pune-osm.json`; reload the app or rebuild to include it. The download validates data before replacing an existing file. See the on-map attribution when real data is loaded.
+The importer caches successful XML tiles in ignored `.cache/gtpune-osm/` so interrupted imports resume. Remove that cache to refresh from the service. Data is validated before replacing `public/data/pune-osm.json`. The in-game source label shows whether the bundled map or the illustrative fallback is active. If the map is absent, a generated city allows offline development.
 
-OpenStreetMap data is © OpenStreetMap contributors, licensed under [ODbL 1.0](https://www.openstreetmap.org/copyright). Retain attribution and comply with ODbL when redistributing a derived database. Heights use OSM height or level tags where present and otherwise default to 12 m. Road widths, facades, vegetation and NPCs remain generated. OSM coverage is incomplete; even imported footprints are not photorealistic scans. Large imported datasets need further batching/streaming work before targeting low-end mobile devices. No Google Maps tiles or Street View imagery are copied.
+Map data is © OpenStreetMap contributors, licensed under [ODbL 1.0](https://www.openstreetmap.org/copyright), separately from application code. See [map data provenance](docs/MAP-DATA.md). Retain attribution and comply with ODbL when redistributing a derived database. Heights use OSM height or level tags when present and default to 12 m otherwise. No Google Maps tiles or Street View imagery are copied.
 
 ## Validation
 
@@ -56,6 +57,6 @@ Requested references:
 - https://www.youtube.com/shorts/1pXjiHdqLEU
 - https://www.youtube.com/watch?v=OOHPj0aqXfQ
 
-Reference inspection and the live map download were blocked by the cloud network policy during initial development. No reference code, media or assets have been extracted or reverse engineered. Network domain additions were saved as an environment draft; they must be applied through environment settings before these operations can be validated.
+Benglooru’s public site and controls documentation were inspected after network access was restored. Its public documentation describes a stylized OSM-based map, generated local voices, driving, walking and missions. Its source code and assets have not been copied into this project. The provided YouTube links remain inaccessible through the cloud proxy.
 
-The current result is a playable prototype, not a finished GTA-scale game or photorealistic digital twin. Next fidelity steps require actual map ingestion and validation, licensed building imagery/3D models, terrain, animated rigged residents, native voice recordings, continuous traffic routing and spatial batching. The engine currently models a flat city surface and generated building exteriors; it has no interiors, combat or multiplayer.
+The current result is a playable prototype, not a finished GTA-scale game or photorealistic digital twin. Next fidelity steps require licensed building imagery/3D models, terrain, animated rigged residents, native voice recordings, continuous traffic routing and further spatial batching. The engine currently models a flat city surface and generated building exteriors; it has no interiors, combat or multiplayer.
