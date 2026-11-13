@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#172d29" />
+    <title>PUNE / After Hours</title>
+  </head>
+  <body>
+    <canvas id="world" tabindex="0" aria-label="Interactive 3D Pune driving game"></canvas>
+    <div id="shade"></div>
+    <header>
+      <a class="brand" href="#">PUNE<span>AFTER HOURS</span></a>
+      <div class="location">
+        <i></i><span id="district">DECCAN GYMKHANA</span
+        ><small>18.5167° N &nbsp; 73.8410° E</small>
+      </div>
+      <button id="help" aria-label="Show controls">
+        ? <span>CONTROLS</span>
+      </button>
+    </header>
+    <main id="welcome">
+      <div class="eyebrow">AN OPEN-WORLD PUNE EXPERIMENT</div>
+      <h1>Your city.<br />Your <em>streets.</em></h1>
+      <p>
+        From the bustle of FC Road to the lanes of Kothrud.<br />Take the wheel.
+        Find your own way home.
+      </p>
+      <div class="launch">
+        <button id="play">EXPLORE PUNE <span>↗</span></button
+        ><span>FREE ROAM<br /><b>NO DESTINATION REQUIRED</b></span>
+      </div>
+      <div class="intro-tags">
+        <span>3D OPEN WORLD</span><span>मराठी · हिंदी · ENGLISH</span>
+      </div>
+    </main>
+    <aside id="route">
+      <div class="eyebrow">THE EVENING RUN <span>01 / 03</span></div>
+      <h2>Meet me on FC Road.</h2>
+      <p id="mission">Follow the amber beacon to the first stop.</p>
+      <div class="route-line">
+        <i></i><span id="target">FC ROAD</span><b id="distance">— m</b>
+      </div>
+      <button id="job">START DABBA DELIVERY · ₹450</button>
+      <div id="job-status" role="status"></div>
+      <button id="reset">↺ &nbsp; Return to Deccan</button>
+    </aside>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <div id="dialogue" role="status" hidden></div>
+    <footer>
+      <section class="map-panel" id="map-panel">
+        <div class="map-label">
+          <span>पुणे <b>/ PUNE</b></span>
+          <span class="map-actions">
+            <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
+            <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
+            <button id="map-min" type="button">MIN</button>
+            <button id="map-size" type="button">EXPAND</button>
+            <button id="map-recenter" type="button" hidden>RECENTER</button>
+          </span>
+        </div>
+        <canvas
+          id="map"
+          width="520"
+          height="340"
+          aria-label="Street map with you, traffic, people, buildings, and places"
+        ></canvas>
+        <div class="map-options" id="map-options">
+          <label><input id="layer-roads" type="checkbox" checked /> Roads</label>
+          <label><input id="layer-buildings" type="checkbox" checked /> Buildings</label>
+          <label><input id="layer-traffic" type="checkbox" checked /> Traffic</label>
+          <label><input id="layer-people" type="checkbox" checked /> People</label>
+          <label><input id="layer-places" type="checkbox" checked /> Places</label>
+        </div>
+        <div class="map-legend">
+          <span><i class="you"></i> You</span>
+          <span><i class="car"></i> Traffic</span>
+          <span><i class="person"></i> People</span>
+          <span><i class="place"></i> Places</span>
+        </div>
+        <div class="map-bottom">
+          <span id="map-source">ILLUSTRATIVE CITY · NOT SURVEYED</span
+          ><span class="live">● LIVE</span>
+        </div>
+      </section>
+      <section id="dashboard">
+        <div id="mode">COMPACT / STREET</div>
+        <div class="speed"><span id="speed">00</span><small>KM/H</small></div>
+        <div class="speed-track"><i id="speed-bar"></i></div>
+        <div class="gear">
+          <span id="gear">N</span><b id="time">17:42</b><span>24°C</span>
+        </div>
+      </section>
+      <section class="controls-bar">
+        <div>
+          <kbd>W A S D</kbd> MOVE <kbd>SHIFT</kbd> RUN <kbd>SPACE</kbd> JUMP /
+          BRAKE <kbd>E</kbd> WALK <kbd>F</kbd> USE
+        </div>
+        <div>
+          <kbd>C</kbd> CAMERA <kbd>H</kbd> HORN <kbd>T</kbd> TALK
+          <kbd>P</kbd> PAUSE
+        </div>
+        <div class="settings">
+          <button id="audio">SOUND OFF</button
+          ><label for="language">VOICE</label
+          ><select id="language">
+            <option value="mr-IN">मराठी</option>
+            <option value="hi-IN">हिंदी</option>
+            <option value="en-IN">ENGLISH</option></select
+          ><button id="lighting">GOLDEN HOUR</button
+          ><button id="photo">4K PHOTO</button>
+        </div>
+      </section>
+    </footer>
+    <div id="mobile">
+      <button data-key="w">↑</button><button data-key="a">←</button
+      ><button data-key="s">↓</button><button data-key="d">→</button>
+    </div>
+    <dialog id="instructions">
+      <button id="close-help" aria-label="Close controls">✕</button>
+      <div class="eyebrow">WELCOME TO THE NEIGHBOURHOOD</div>
+      <h2>Make yourself at home.</h2>
+      <p>
+        WASD or arrow keys to drive or walk. On foot, moving the mouse looks
+        around without holding a button, and walking follows that look. In
+        the car the camera follows the car. Esc releases the pointer. Shift
+        runs and Space jumps on foot; Space brakes in the car. E gets out
+        of the car when stopped; return nearby to get in. C changes the camera.
+        H honks. T speaks with a nearby pedestrian. F picks up a pipe, a
+        stick, or a stone on the pavement and swings it. P pauses. Cars stop
+        for people. The map can be
+        minimized or expanded. Drag the expanded map to move across Kothrud,
+        Deccan, and FC Road, use the wheel to zoom, and RECENTER to follow
+        yourself. Checkboxes hide roads, buildings, traffic, people, or places.
+      </p>
+      <p>
+        Visit the three amber markers on your evening run. Use “Return to
+        Deccan” if you get stuck.
+      </p>
+      <p class="disclosure">
+        Prototype: generated buildings, approximate streets and fictional
+        residents. No claim of exact Pune geometry or real building likeness.
+        Bundled Marathi, Hindi and Indian English neural speech plays after
+        sound is enabled. Voices are synthetic. Building facades are inferred
+        rather than surveyed.
+      </p>
+      <button id="resume">LET’S GO ↗</button>
+    </dialog>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

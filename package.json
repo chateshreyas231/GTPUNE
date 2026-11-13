@@ -1,0 +1,31 @@
+{
+  "name": "gtpune",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pune After Hours: 3D driving and walking prototype, with the original FC Road chapter preserved.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js tests/*.test.js",
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test:browser": "playwright test",
+    "map:fetch": "node scripts/fetch-map.mjs",
+    "prestart": "npm run build",
+    "pretest": "npm run build"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.14.0",
+    "fast-xml-parser": "^5.12.0",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "prettier": "^3.10.1",
+    "vite": "^8.3.8"
+  }
+}
