@@ -1,6 +1,11 @@
 import { createDelivery, tickDelivery, interactDelivery } from "./delivery.js";
 import { streetDetails } from "./street-details.js";
-import { loadSurfacePhotos, hydrateResidents } from "./visual-assets.js";
+import {
+  loadSurfacePhotos,
+  hydrateResidents,
+  createStreetTextures,
+  commercialWallMaterial,
+} from "./visual-assets.js";
 import { lines } from "./dialogue.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -13,6 +18,7 @@ import {
   makeCar,
   person,
   origin,
+  laneStripeOffsets,
 } from "./city.js";
 const $ = (id) => document.getElementById(id);
 let city = fallbackCity();
@@ -24,6 +30,7 @@ try {
   console.warn("Using illustrative map:", e.message);
 }
 const surfacePhotos = await loadSurfacePhotos();
+const streetTextures = createStreetTextures(surfacePhotos.plaster?.image);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc6c8ac);
 scene.fog = new THREE.FogExp2(0xc6c8ac, 0.0013);
@@ -74,18 +81,24 @@ const mats = {
     map: surfacePhotos.asphalt,
     roughness: 0.93,
   }),
-  walk: material(0xb2af92),
-  mark: material(0xc8c9aa),
+  walk: new THREE.MeshStandardMaterial({
+    color: 0xd5ccb8,
+    map: streetTextures.paver,
+    roughness: 0.96,
+  }),
+  mark: material(0xf3f0e4),
+  kerb: material(0xe2c14a),
   trunk: material(0x6e5c42),
   leaf: material(0x566d43),
 };
 function box(w, h, d, mat, x, y, z, parent = scene) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-  if (mat === mats.road) {
+  if (mat === mats.road || mat === mats.walk) {
     const pos = m.geometry.attributes.position,
-      uv = m.geometry.attributes.uv;
+      uv = m.geometry.attributes.uv,
+      tile = mat === mats.road ? 4 : 1.7;
     for (let i = 0; i < uv.count; i++)
-      uv.setXY(i, pos.getX(i) / 4, pos.getZ(i) / 4);
+      uv.setXY(i, pos.getX(i) / tile, pos.getZ(i) / tile);
   }
   m.position.set(x, y, z);
   m.castShadow = true;
@@ -132,57 +145,41 @@ function renderRoads(cx, cz) {
       z,
       roadGroup,
     ).rotation.y = angle;
-    for (let t = 6; t < length; t += 18)
-      box(
-        0.17,
-        0.03,
-        5,
-        mats.mark,
-        a[0] + ((b[0] - a[0]) * t) / length,
-        0.2,
-        a[1] + ((b[1] - a[1]) * t) / length,
-        roadGroup,
+    const stripes = laneStripeOffsets(width),
+      cos = Math.cos(angle),
+      sin = Math.sin(angle);
+    const across = (mesh, localX) => {
+      mesh.position.x += cos * localX;
+      mesh.position.z -= sin * localX;
+      return mesh;
+    };
+    for (const side of [-1, 1])
+      across(
+        box(0.16, 0.02, length * 0.98, mats.kerb, x, 0.22, z, roadGroup),
+        side * stripes.edge,
       ).rotation.y = angle;
+    for (const lane of stripes.dashes)
+      for (let t = 5; t < length; t += 12)
+        across(
+          box(
+            0.16,
+            0.02,
+            4.2,
+            mats.mark,
+            a[0] + ((b[0] - a[0]) * t) / length,
+            0.22,
+            a[1] + ((b[1] - a[1]) * t) / length,
+            roadGroup,
+          ),
+          lane,
+        ).rotation.y = angle;
   }
   mergeStatic(roadGroup);
 }
 
-function facade() {
-  const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 512;
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = "#c7bc9e";
-  ctx.fillRect(0, 0, 512, 512);
-  if (surfacePhotos.plaster)
-    ctx.drawImage(surfacePhotos.plaster.image, 0, 0, 512, 512);
-  for (let y = 12; y < 512; y += 128) {
-    ctx.fillStyle = "#afa38b";
-    ctx.fillRect(0, y + 107, 512, 6);
-    for (let x = 20; x < 512; x += 128) {
-      ctx.fillStyle = "#302f2c";
-      ctx.fillRect(x - 5, y - 5, 76, 91);
-      ctx.fillStyle = "#637e82";
-      ctx.fillRect(x, y, 66, 78);
-      ctx.fillStyle = "#a7b5ac";
-      ctx.fillRect(x + 5, y + 3, 24, 68);
-      ctx.fillStyle = "#bcb8a4";
-      ctx.fillRect(x + 31, y, 3, 78);
-      ctx.fillRect(x, y + 38, 66, 3);
-      ctx.fillStyle = "#827b6a";
-      ctx.fillRect(x - 8, y + 80, 82, 10);
-    }
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  return tex;
-}
-const facadeTex = facade();
 const palette = [0xc9bd9f, 0xd6c5ad, 0xb7b8ac, 0xb8c1b0, 0xd1b29a];
-const buildingMats = palette.map(
-  (c) =>
-    new THREE.MeshStandardMaterial({ color: c, map: facadeTex, roughness: 1 }),
+const buildingMats = palette.map((c) =>
+  commercialWallMaterial(streetTextures.upper, streetTextures.shop, c),
 );
 const roofMat = material(0x9b9b8b);
 const obstacles = city.buildings.map((b) => {
@@ -236,10 +233,18 @@ function renderBuildings(cx, cz) {
   mergeStatic(buildingGroup);
   if (detailGroup) {
     scene.remove(detailGroup);
+    const geos = new Set(),
+      gone = new Set();
     detailGroup.traverse((o) => {
-      if (o.isMesh) {
+      if (!o.isMesh) return;
+      if (!geos.has(o.geometry)) {
+        geos.add(o.geometry);
         o.geometry.dispose();
-        o.material.dispose();
+      }
+      for (const mat of [].concat(o.material)) {
+        if (gone.has(mat)) continue;
+        gone.add(mat);
+        mat.dispose();
       }
     });
   }
@@ -290,8 +295,8 @@ for (
     const dx = (r.b[0] - r.a[0]) / r.length,
       dz = (r.b[1] - r.a[1]) / r.length;
     for (const side of [-1, 1]) {
-      const x = r.a[0] + dx * t + dz * (r.width / 2 + 5) * side,
-        z = r.a[1] + dz * t - dx * (r.width / 2 + 5) * side;
+      const x = r.a[0] + dx * t + dz * (r.width / 2 + 3.4) * side,
+        z = r.a[1] + dz * t - dx * (r.width / 2 + 3.4) * side;
       if (
         roadSegments.some(
           (segment) =>
@@ -299,10 +304,10 @@ for (
         )
       )
         continue;
-      box(0.65, 5, 0.65, mats.trunk, x, 2.5, z);
+      box(0.55, 4.2, 0.55, mats.trunk, x, 2.1, z);
       const tree = new THREE.Mesh(treeGeo, mats.leaf);
-      tree.scale.set(4.5, 5.5, 4.5);
-      tree.position.set(x, 7, z);
+      tree.scale.set(6.4, 3.6, 6.2);
+      tree.position.set(x, 6.1, z);
       tree.castShadow = true;
       scene.add(tree);
     }

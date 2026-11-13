@@ -6,6 +6,7 @@ import {
   project,
   segmentDistance,
   inside,
+  laneStripeOffsets,
 } from "../src/city.js";
 test("fallback city is deterministic and includes a playable route", () => {
   const a = fallbackCity();
@@ -50,6 +51,14 @@ test("OSM importer uses footprints and height and snaps spawn to roads", () => {
 });
 test("empty map cannot silently activate real-map mode", () =>
   assert.throws(() => parseOSM({ elements: [] }), /no driveable roads/));
+test("lane paint stays inside wide and narrow carriageways", () => {
+  const narrow = laneStripeOffsets(12);
+  assert.deepEqual(narrow.dashes, [0]);
+  assert.ok(narrow.edge > 0 && narrow.edge < 6);
+  const wide = laneStripeOffsets(20);
+  assert.deepEqual(wide.dashes, [-4.4, 0, 4.4]);
+  assert.ok(wide.edge < 10);
+});
 test("collision geometry handles corners and polygon interiors", () => {
   assert.equal(segmentDistance(2, 2, [0, 0], [0, 4]), 2);
   assert.ok(

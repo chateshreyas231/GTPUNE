@@ -269,3 +269,9 @@ export function person(index) {
   };
   return g;
 }
+// Paint positions for a carriageway. Offsets are across the road from its centre.
+export function laneStripeOffsets(width) {
+  const edge = Math.max(0.7, width / 2 - 0.48);
+  const dashes = width >= 16 ? [-width * 0.22, 0, width * 0.22] : [0];
+  return { edge, dashes };
+}
